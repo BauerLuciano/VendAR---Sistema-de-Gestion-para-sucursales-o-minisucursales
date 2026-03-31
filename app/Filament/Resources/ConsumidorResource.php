@@ -4,11 +4,13 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\ConsumidorResource\Pages;
 use App\Models\Consumidor;
+use App\Models\MovimientoCuentaCorriente;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Notifications\Notification;
 
 class ConsumidorResource extends Resource
 {
@@ -60,59 +62,86 @@ class ConsumidorResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('telefono')
                     ->searchable(),
-                
-                // Mostrar el Límite de Crédito
                 Tables\Columns\TextColumn::make('limite_cuenta_corriente')
                     ->money('ARS')
                     ->sortable()
                     ->label('Límite Permitido'),
-                
                 Tables\Columns\TextColumn::make('puntos_acumulados')
                     ->numeric()
                     ->sortable()
                     ->badge()
                     ->color('info')
                     ->label('Puntos'),
-
-                // Magia Pura: Traemos el saldo desde la tabla de cuentas_corrientes
                 Tables\Columns\TextColumn::make('cuentaCorriente.saldo_deudor')
                     ->money('ARS')
                     ->label('Deuda Actual')
-                    ->badge() // Lo convierte en una "pastilla" visual
-                    ->color(fn ($state) => $state > 0 ? 'danger' : 'success') // Rojo si debe plata, verde si está en $0
+                    ->badge()
+                    ->color(fn ($state) => $state > 0 ? 'danger' : 'success')
                     ->sortable(),
             ])
-            ->filters([
-                //
-            ])
+            ->filters([])
             ->actions([
+                // 1. CANJEAR PUNTOS
                 Tables\Actions\Action::make('canjear_puntos')
                     ->label('Canjear Puntos')
                     ->icon('heroicon-o-gift')
                     ->color('warning')
-                    // Solo se muestra si el cliente tiene al menos 1 punto
                     ->visible(fn (Consumidor $record) => $record->puntos_acumulados > 0)
                     ->form([
                         Forms\Components\TextInput::make('puntos_a_descontar')
                             ->label('Puntos a canjear (Premio)')
                             ->numeric()
                             ->required()
-                            // No puede canjear más puntos de los que tiene
                             ->maxValue(fn (Consumidor $record) => $record->puntos_acumulados)
                             ->helperText(fn (Consumidor $record) => 'Puntos disponibles: ' . $record->puntos_acumulados),
                     ])
                     ->action(function (array $data, Consumidor $record): void {
-                        // Restamos los puntos
                         $record->update([
                             'puntos_acumulados' => $record->puntos_acumulados - $data['puntos_a_descontar'],
                         ]);
 
-                        // Notificación de éxito
-                        \Filament\Notifications\Notification::make()
+                        Notification::make()
                             ->title('Premio canjeado con éxito')
                             ->success()
                             ->send();
                     }),
+
+                // 2. COBRAR DEUDA
+                Tables\Actions\Action::make('cobrar_deuda')
+                    ->label('Cobrar')
+                    ->icon('heroicon-o-banknotes')
+                    ->color('success')
+                    ->visible(fn (Consumidor $record) => $record->cuentaCorriente && $record->cuentaCorriente->saldo_deudor > 0)
+                    ->form([
+                        Forms\Components\TextInput::make('monto_pago')
+                            ->label('Monto que entrega el cliente')
+                            ->numeric()
+                            ->required()
+                            ->prefix('$')
+                            ->maxValue(fn (Consumidor $record) => $record->cuentaCorriente->saldo_deudor)
+                            ->helperText(fn (Consumidor $record) => 'Deuda actual: $' . number_format($record->cuentaCorriente->saldo_deudor, 2, ',', '.')),
+                    ])
+                    ->action(function (array $data, Consumidor $record): void {
+                        $cuenta = $record->cuentaCorriente;
+                        $montoPagado = $data['monto_pago'];
+
+                        MovimientoCuentaCorriente::create([
+                            'cuenta_corriente_id' => $cuenta->id,
+                            'monto' => $montoPagado,
+                            'tipo' => 'pago',
+                            'descripcion' => 'Pago por caja',
+                        ]);
+
+                        $cuenta->update([
+                            'saldo_deudor' => $cuenta->saldo_deudor - $montoPagado,
+                        ]);
+
+                        Notification::make()
+                            ->title('Pago registrado correctamente')
+                            ->success()
+                            ->send();
+                    }),
+
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
@@ -122,12 +151,7 @@ class ConsumidorResource extends Resource
             ]);
     }
 
-    public static function getRelations(): array
-    {
-        return [
-            //
-        ];
-    }
+    public static function getRelations(): array { return []; }
 
     public static function getPages(): array
     {
