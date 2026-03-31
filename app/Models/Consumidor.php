@@ -41,4 +41,15 @@ class Consumidor extends Model
         // Usamos floor() para redondear para abajo (ej: si gasta $199, suma 1 punto, no 2)
         return floor($montoCompra / 100);
     }
+
+    /**
+     * Regla de conversión: Cada $100 gastaos = 1 punto.
+     * Ejemplo: $1000 pesos = 10 puntos.
+     */
+    public function sumarPuntosPorMonto(float $monto): void
+    {
+        $puntosASumar = floor($monto / 100);
+        
+        $this->increment('puntos_acumulados', $puntosASumar);
+    }
 }

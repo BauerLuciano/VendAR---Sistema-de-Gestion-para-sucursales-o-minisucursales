@@ -27,15 +27,31 @@ class ConsumidorResource extends Resource
             ->schema([
                 Forms\Components\TextInput::make('nombre')
                     ->required()
-                    ->maxLength(255),
+                    ->maxLength(255)
+                    ->regex('/^[\pL\s\-]+$/u') 
+                    ->validationMessages([
+                        'regex' => 'El nombre no puede contener números ni símbolos.',
+                    ]),
                 Forms\Components\TextInput::make('dni')
                     ->label('DNI')
-                    ->maxLength(255)
-                    ->unique(ignoreRecord: true),
+                    ->required()
+                    ->numeric()
+                    ->minLength(7)
+                    ->maxLength(8)
+                    ->unique(ignoreRecord: true)
+                    ->validationMessages([
+                        'numeric' => 'El DNI debe ser solo números.',
+                        'min' => 'El DNI debe tener al menos 7 dígitos.',
+                        'max' => 'El DNI no puede superar los 8 dígitos.',
+                    ]),
                 Forms\Components\TextInput::make('telefono')
-                    ->tel()
                     ->label('Teléfono / WhatsApp')
-                    ->maxLength(255),
+                    ->tel() 
+                    ->regex('/^[0-9]+$/') 
+                    ->maxLength(15)
+                    ->validationMessages([
+                        'regex' => 'Ingresá solo los números del teléfono, sin espacios ni guiones.',
+                    ]),
                 Forms\Components\TextInput::make('direccion')
                     ->label('Dirección')
                     ->maxLength(255),
