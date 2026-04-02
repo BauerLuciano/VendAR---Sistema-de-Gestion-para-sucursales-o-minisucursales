@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class Producto extends Model
 {
@@ -22,25 +23,22 @@ class Producto extends Model
         'estado',
     ];
 
-    public function categoria()
+    protected $appends = ['url_imagen'];
+
+    public function getUrlImagenAttribute()
     {
-        return $this->belongsTo(Categoria::class);
+        if ($this->imagen) {
+            return Storage::url($this->imagen);
+        }
+        return null;
     }
 
-    public function marca()
-    {
-        return $this->belongsTo(Marca::class);
-    }
-
-    public function branches()
-    {
+    public function categoria() { return $this->belongsTo(Categoria::class, 'categoria_id'); }
+    public function marca() { return $this->belongsTo(Marca::class, 'marca_id'); }
+    
+    public function branches() {
         return $this->belongsToMany(Branch::class, 'branch_producto')
                     ->withPivot('cantidad_fisica', 'cantidad_reservada')
                     ->withTimestamps();
-    }
-
-    public function reglasLiquidacion()
-    {
-        return $this->hasMany(ReglaLiquidacion::class);
     }
 }
