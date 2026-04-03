@@ -9,7 +9,7 @@ class Venta extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['consumidor_id', 'branch_id', 'user_id', 'total', 'metodo_pago', 'fecha'];
+    protected $fillable = ['consumidor_id', 'sucursal_id', 'user_id', 'total', 'metodo_pago', 'fecha'];
 
     public function consumidor() {
         return $this->belongsTo(Consumidor::class); 
@@ -19,14 +19,12 @@ class Venta extends Model
         return $this->hasMany(VentaDetalle::class); 
     }
 
-    // Relación con el vendedor
     public function user() {
         return $this->belongsTo(User::class);
     }
 
-    // Cambié sucursal_id por branch_id para que sea coherente con tu tabla 'branches'
     public function branch()
     {
-        return $this->belongsTo(Branch::class, 'branch_id');
+        return $this->belongsTo(Branch::class, 'sucursal_id');
     }
 }

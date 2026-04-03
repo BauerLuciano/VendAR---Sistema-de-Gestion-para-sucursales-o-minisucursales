@@ -16,4 +16,9 @@ class Branch extends Model
                     ->withPivot('cantidad_fisica', 'cantidad_reservada')
                     ->withTimestamps();
     }
+
+    public function users()
+    {
+        return $this->hasMany(User::class, 'branch_id');
+    }
 }

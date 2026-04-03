@@ -83,7 +83,13 @@ Route::middleware('auth')->group(function () {
 
     // Rutas de Ventas
     Route::get('/pos', [VentaController::class, 'index'])->name('pos.index');
-    Route::post('/pos', [VentaController::class, 'store'])->name('ventas.store');   
-});
+    Route::post('/pos', [VentaController::class, 'store'])->name('ventas.store');  
+    
+    // Rutas de Sucursales
+    Route::get('/branches', [App\Http\Controllers\BranchController::class, 'index'])->name('branches.index');
+    Route::post('/branches', [App\Http\Controllers\BranchController::class, 'store'])->name('branches.store');
+    Route::put('/branches/{branch}', [App\Http\Controllers\BranchController::class, 'update'])->name('branches.update');
+    Route::put('/branches/{branch}/status', [App\Http\Controllers\BranchController::class, 'status'])->name('branches.status');
+    });
 
 require __DIR__.'/auth.php';

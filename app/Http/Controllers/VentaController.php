@@ -48,7 +48,7 @@ class VentaController extends Controller
             $venta = Venta::create([
                 'user_id' => auth()->id(),
                 'consumidor_id' => $request->cliente_id,
-                'branch_id' => auth()->user()->branch_id,
+                'sucursal_id' => auth()->user()->branch_id,
                 'total' => $request->total_venta,
                 'metodo_pago' => $request->metodo_pago,
                 'fecha' => now(),
