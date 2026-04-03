@@ -9,8 +9,11 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote')->hourly();
 
-// Analizar stock para transferencias inteligentes (Todos los días)
+// 1. Transferencias entre sucursales
 Schedule::job(new AnalizarStockParaTransferencias)->daily();
 
-// Generar intereses de mora automáticamente (Todos los días)
+// 2. Compras a proveedores
+Schedule::job(new GenerarOrdenesCompraSugeridas)->dailyAt('01:00');
+
+// 3. Intereses por mora
 Schedule::command('app:generar-intereses-mora')->daily();
