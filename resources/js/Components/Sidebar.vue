@@ -28,8 +28,8 @@ const links = [
             <Link v-for="item in links" :key="item.nombre" 
                 :href="item.ruta !== '#' ? route(item.ruta) : '#'"
                 :class="[
-                    item.ruta !== '#' && route().current(item.ruta + '*') 
-                    ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/20' 
+                    item.ruta !== '#' && route().current(item.ruta + '*')
+                    ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/20'
                     : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                 ]"
                 class="flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all duration-200 group"
