@@ -19,30 +19,30 @@ defineEmits(['cerrar']);
 
                 <div class="space-y-4 text-center">
                     <div>
-                        <h3 class="text-2xl font-black text-slate-800 uppercase tracking-tighter leading-none">{{ sucursal.name }}</h3>
+                        <h3 class="text-2xl font-black text-slate-800 uppercase tracking-tighter leading-none">{{ sucursal.nombre }}</h3>
                         <p class="text-slate-400 font-mono text-[10px] mt-1 uppercase tracking-widest italic">ID de Registro: #{{ sucursal.id }}</p>
                     </div>
 
                     <div class="grid grid-cols-2 gap-4 pt-4">
                         <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 text-left">
                             <span class="block text-[9px] font-black text-slate-400 uppercase tracking-widest">Tipo de Local</span>
-                            <span class="text-xs font-bold text-sky-700 uppercase">{{ sucursal.type.replace('_', ' ') }}</span>
+                            <span class="text-xs font-bold text-sky-700 uppercase">{{ sucursal.tipo.replace('_', ' ') }}</span>
                         </div>
                         <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 text-left">
                             <span class="block text-[9px] font-black text-slate-400 uppercase tracking-widest">Teléfono</span>
-                            <span class="text-xs font-bold text-slate-700">{{ sucursal.phone || 'N/A' }}</span>
+                            <span class="text-xs font-bold text-slate-700">{{ sucursal.telefono || 'N/A' }}</span>
                         </div>
                     </div>
 
                     <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 text-left">
                         <span class="block text-[9px] font-black text-slate-400 uppercase tracking-widest">Dirección Física</span>
-                        <span class="text-xs font-bold text-slate-700 uppercase italic">{{ sucursal.address || 'Sin dirección registrada' }}</span>
+                        <span class="text-xs font-bold text-slate-700 uppercase italic">{{ sucursal.direccion || 'Sin dirección registrada' }}</span>
                     </div>
 
                     <div class="mt-4">
-                        <span :class="sucursal.is_active ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 'text-rose-600 bg-rose-50 border-rose-200'" 
+                        <span :class="sucursal.estado ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 'text-rose-600 bg-rose-50 border-rose-200'" 
                               class="px-6 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] border shadow-sm">
-                            {{ sucursal.is_active ? 'Sucursal Operativa' : 'Sucursal Inactiva' }}
+                            {{ sucursal.estado ? 'Sucursal Operativa' : 'Sucursal Inactiva' }}
                         </span>
                     </div>
                 </div>

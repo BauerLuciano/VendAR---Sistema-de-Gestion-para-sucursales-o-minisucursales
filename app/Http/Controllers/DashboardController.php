@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CuentaCorriente;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
@@ -17,12 +18,12 @@ class DashboardController extends Controller
         // 2. Cálculo de Productos con Bajo Stock (Cruce de tablas)
         $productosBajoStock = DB::table('productos')
             ->join('branch_producto', 'productos.id', '=', 'branch_producto.producto_id')
-            ->join('branches', 'branches.id', '=', 'branch_producto.branch_id')
+            ->join('sucursales', 'sucursales.id', '=', 'branch_producto.branch_id')
             ->select(
-                'productos.nombre as producto', 
-                'productos.stock_minimo', 
-                'branch_producto.cantidad_fisica', 
-                'branches.name as sucursal'
+                'productos.nombre as producto',
+                'productos.stock_minimo',
+                'branch_producto.cantidad_fisica',
+                'sucursales.nombre as sucursal' 
             )
             ->whereRaw('branch_producto.cantidad_fisica <= productos.stock_minimo')
             ->get();

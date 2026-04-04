@@ -8,7 +8,7 @@ const links = [
     { nombre: 'Marcas', ruta: 'marcas.index', icono: 'marcas' },
     { nombre: 'Historial de Ventas', ruta: 'ventas.index', icono: 'ventas' }, // <-- Acá está el listado
     { nombre: 'Punto de Venta', ruta: 'pos.index', icono: 'pos' }, // <-- Acá está la caja
-    { nombre: 'Sucursales', ruta: 'branches.index', icono: 'sucursales' },
+    { nombre: 'Sucursales', ruta: 'sucursales.index', icono: 'sucursales' },
     { nombre: 'Clientes', ruta: 'consumidores.index', icono: 'clientes' },
 ];
 </script>

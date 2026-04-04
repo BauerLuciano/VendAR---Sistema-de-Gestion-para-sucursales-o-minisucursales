@@ -90,7 +90,7 @@ const toggleEstado = (p) => {
                         <table class="w-full text-left border-separate border-spacing-y-2">
                             <thead>
                                 <tr class="bg-sky-50 text-sky-900 uppercase text-xs font-black">
-                                    <th class="p-4 rounded-l-xl">SKU</th>
+                                    <th class="p-4 rounded-l-xl">Cód. Barras</th>
                                     <th class="p-4">Producto</th>
                                     <th class="p-4 text-center">Imagen</th>
                                     <th class="p-4 text-right">Precio Venta</th>
@@ -109,7 +109,7 @@ const toggleEstado = (p) => {
                                     class="bg-white border-b hover:bg-sky-50 transition-all duration-200 group shadow-sm"
                                     :class="{'opacity-50 grayscale': !p.estado}">
                                     
-                                    <td class="p-4 font-mono font-bold text-sky-800">{{ p.sku }}</td>
+                                    <td class="p-4 font-mono font-bold text-sky-800">{{ p.codigo_barras }}</td>
                                     <td class="p-4 font-bold text-slate-700">{{ p.nombre }}</td>
                                     
                                     <td class="p-4">

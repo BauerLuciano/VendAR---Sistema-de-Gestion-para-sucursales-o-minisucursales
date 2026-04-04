@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('ingresos_mercaderias', function (Blueprint $table) {
             $table->id();
             $table->foreignId('proveedor_id')->constrained('suppliers')->restrictOnDelete();
-            $table->foreignId('sucursal_id')->constrained('branches')->restrictOnDelete();
+            $table->foreignId('sucursal_id')->constrained('sucursales')->restrictOnDelete();
             $table->date('fecha_comprobante');
             $table->decimal('total_factura', 12, 2)->default(0);
             $table->timestamps();

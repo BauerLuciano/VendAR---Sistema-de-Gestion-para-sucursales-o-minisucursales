@@ -1,6 +1,7 @@
 <?php
 
-use App\Http\Controllers\BranchController;
+// IMPORT ACTUALIZADO AL ESPAÑOL
+use App\Http\Controllers\SucursalController; 
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProductoController;
 use App\Http\Controllers\CategoriaController;
@@ -71,11 +72,13 @@ Route::middleware('auth')->group(function () {
     Route::post('/ventas', [VentaController::class, 'store'])->name('ventas.store');// Guardar venta
     Route::post('/ventas/{venta}/cancelar', [VentaController::class, 'cancelar'])->name('ventas.cancelar'); 
     
-    // Rutas de Sucursales
-    Route::get('/branches', [BranchController::class, 'index'])->name('branches.index');
-    Route::post('/branches', [BranchController::class, 'store'])->name('branches.store');
-    Route::put('/branches/{branch}', [BranchController::class, 'update'])->name('branches.update');
-    Route::put('/branches/{branch}/status', [BranchController::class, 'status'])->name('branches.status');
+    // ==========================================
+    // Rutas de Sucursales (REFACORIZADO AL ESPAÑOL)
+    // ==========================================
+    Route::get('/sucursales', [SucursalController::class, 'index'])->name('sucursales.index');
+    Route::post('/sucursales', [SucursalController::class, 'store'])->name('sucursales.store');
+    Route::put('/sucursales/{sucursal}', [SucursalController::class, 'update'])->name('sucursales.update');
+    Route::patch('/sucursales/{sucursal}/status', [SucursalController::class, 'status'])->name('sucursales.status'); // Cambiado a PATCH
 
     // Rutas de Clientes (Consumidores)
     Route::get('/clientes', [ConsumidorController::class, 'index'])->name('consumidores.index');

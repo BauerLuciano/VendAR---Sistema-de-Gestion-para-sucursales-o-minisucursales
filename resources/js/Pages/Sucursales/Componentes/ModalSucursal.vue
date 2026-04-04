@@ -8,19 +8,20 @@ const emit = defineEmits(['cerrar']);
 
 const formulario = useForm({
     id: null,
-    name: '',
-    address: '',
-    phone: '',
-    type: 'punto_de_venta',
+    nombre: '',
+    direccion: '',
+    telefono: '',
+    tipo: 'punto_de_venta',
 });
 
 watch(() => props.sucursal, (nuevo) => {
+    formulario.clearErrors();
     if (nuevo) {
         formulario.id = nuevo.id;
-        formulario.name = nuevo.name;
-        formulario.address = nuevo.address;
-        formulario.phone = nuevo.phone;
-        formulario.type = nuevo.type;
+        formulario.nombre = nuevo.nombre;
+        formulario.direccion = nuevo.direccion;
+        formulario.telefono = nuevo.telefono || '';
+        formulario.tipo = nuevo.tipo;
     } else {
         formulario.reset();
     }
@@ -49,30 +50,34 @@ const guardar = () => {
             <form @submit.prevent="guardar" class="p-6 grid grid-cols-2 gap-4">
                 <div class="col-span-2">
                     <label class="block text-xs font-bold text-gray-500 uppercase">Nombre de Sucursal</label>
-                    <input v-model="formulario.name" type="text" class="w-full rounded border-gray-300 shadow-sm uppercase font-bold" required>
+                    <input v-model="formulario.nombre" type="text" class="w-full rounded border-gray-300 shadow-sm uppercase font-bold" :class="{'border-rose-500': formulario.errors.nombre}" required>
+                    <p v-if="formulario.errors.nombre" class="text-rose-500 text-xs mt-1 font-bold">{{ formulario.errors.nombre }}</p>
                 </div>
                 <div class="col-span-2">
                     <label class="block text-xs font-bold text-gray-500 uppercase">Dirección</label>
-                    <input v-model="formulario.address" type="text" class="w-full rounded border-gray-300 shadow-sm">
+                    <input v-model="formulario.direccion" type="text" class="w-full rounded border-gray-300 shadow-sm" :class="{'border-rose-500': formulario.errors.direccion}" required>
+                    <p v-if="formulario.errors.direccion" class="text-rose-500 text-xs mt-1 font-bold">{{ formulario.errors.direccion }}</p>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase">Teléfono</label>
                     <input 
-                        v-model="formulario.phone" 
+                        v-model="formulario.telefono" 
+                        @input="formulario.telefono = formulario.telefono.replace(/\D/g, '')"
                         type="text" 
                         maxlength="15" 
-                        oninput="this.value = this.value.replace(/[^0-9]/g, '');" 
                         class="w-full rounded border-gray-300 shadow-sm font-bold text-slate-700"
+                        :class="{'border-rose-500': formulario.errors.telefono}"
                         placeholder="Ej: 3755123456"
                     >
+                    <p v-if="formulario.errors.telefono" class="text-rose-500 text-xs mt-1 font-bold">{{ formulario.errors.telefono }}</p>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase">Tipo</label>
-                    <select v-model="formulario.type" class="w-full rounded border-gray-300 shadow-sm font-bold text-sky-700">
+                    <select v-model="formulario.tipo" class="w-full rounded border-gray-300 shadow-sm font-bold text-sky-700" :class="{'border-rose-500': formulario.errors.tipo}">
                         <option value="punto_de_venta">Punto de Venta</option>
                         <option value="deposito">Depósito / Almacén</option>
-                        <option value="oficina">Oficina</option>
                     </select>
+                    <p v-if="formulario.errors.tipo" class="text-rose-500 text-xs mt-1 font-bold">{{ formulario.errors.tipo }}</p>
                 </div>
                 <div class="col-span-2 flex justify-end gap-3 border-t pt-4 mt-2">
                     <button type="button" @click="$emit('cerrar')" class="text-gray-400 font-bold uppercase text-xs">Cancelar</button>

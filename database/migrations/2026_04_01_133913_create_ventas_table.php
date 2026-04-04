@@ -14,7 +14,7 @@ return new class extends Migration
     Schema::create('ventas', function (Blueprint $table) {
         $table->id();
         $table->foreignId('consumidor_id')->nullable()->constrained('consumidores')->nullOnDelete();
-        $table->foreignId('sucursal_id')->constrained(table: 'branches', indexName: 'ventas_branch_id_foreign'); // Para saber de dónde salió el stock
+        $table->foreignId('sucursal_id')->constrained(table: 'sucursales', indexName: 'ventas_branch_id_foreign'); // Para saber de dónde salió el stock
         $table->decimal('total', 12, 2)->default(0);
         $table->string('metodo_pago'); // efectivo, fiado, mercadopago
         $table->timestamps();

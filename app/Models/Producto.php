@@ -14,13 +14,22 @@ class Producto extends Model
         'categoria_id',
         'marca_id',
         'nombre',
-        'sku',
+        'codigo_barras',
         'descripcion',
+        'unidad_medida',
+        'es_retornable',
         'precio_costo',
         'precio_venta',
         'stock_minimo',
         'imagen',
         'estado',
+    ];
+
+    protected $casts = [
+        'es_retornable' => 'boolean',
+        'estado' => 'boolean',
+        'precio_costo' => 'decimal:2',
+        'precio_venta' => 'decimal:2',
     ];
 
     protected $appends = ['url_imagen'];
@@ -36,14 +45,9 @@ class Producto extends Model
     public function categoria() { return $this->belongsTo(Categoria::class, 'categoria_id'); }
     public function marca() { return $this->belongsTo(Marca::class, 'marca_id'); }
     
-    public function branches() {
-        return $this->belongsToMany(Branch::class, 'branch_producto')
+    public function sucursales() {
+        return $this->belongsToMany(Sucursal::class, 'branch_producto')
                     ->withPivot('cantidad_fisica', 'cantidad_reservada')
                     ->withTimestamps();
-    }
-
-    public function branch_productos()
-    {
-        return $this->hasMany(BranchProducto::class);
     }
 }

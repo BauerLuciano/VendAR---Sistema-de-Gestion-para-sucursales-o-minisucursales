@@ -15,7 +15,7 @@ return new class extends Migration
         if (!Schema::hasTable('branch_producto')) {
             Schema::create('branch_producto', function (Blueprint $table) {
                 $table->id();
-                $table->foreignId('branch_id')->constrained('branches')->cascadeOnDelete();
+                $table->foreignId('branch_id')->constrained('sucursales')->cascadeOnDelete();
                 $table->foreignId('producto_id')->constrained('productos')->cascadeOnDelete();
                 
                 // CAMBIAMOS LOS NOMBRES DE ESTAS COLUMNAS:

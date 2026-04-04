@@ -13,10 +13,18 @@ class Consumidor extends Model
 
     protected $fillable = [
         'nombre',
-        'dni',
+        'apellido',
+        'documento',
+        'email',
         'telefono',
         'direccion',
         'limite_cuenta_corriente',
+        'estado',
+    ];
+
+    protected $casts = [
+        'estado' => 'boolean',
+        'limite_cuenta_corriente' => 'decimal:2',
     ];
 
     protected static function booted()

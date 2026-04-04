@@ -8,93 +8,79 @@ use App\Models\Marca;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
+use Illuminate\Validation\Rule;
 
 class ProductoController extends Controller
 {
-    /**
-     * Muestra el listado de productos y envía datos para los modales.
-     */
     public function index()
     {
         return Inertia::render('Productos/Index', [
-            // Cargamos relaciones para ver nombres de categoría y marca en la tabla
             'productos' => Producto::with(['categoria', 'marca'])->orderBy('id', 'desc')->get(),
-            // Listas para los desplegables (Selects)
             'categorias' => Categoria::all(), 
             'marcas' => Marca::all(),         
         ]);
     }
 
-    /**
-     * Guarda un nuevo producto en la base de datos.
-     */
     public function store(Request $request)
     {
         $validados = $request->validate([
-            'nombre'       => 'required|string|max:255',
-            'sku'          => 'required|string|max:13|unique:productos,sku',
-            'categoria_id' => 'required|exists:categorias,id',
-            'marca_id'     => 'required|exists:marcas,id',
-            'precio_costo' => 'required|numeric',
-            'precio_venta' => 'required|numeric',
-            'stock_minimo' => 'required|integer',
-            'descripcion'  => 'nullable|string',
-            'imagen'       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048', 
+            'nombre'        => 'required|string|max:255',
+            'codigo_barras' => 'required|string|max:50|unique:productos,codigo_barras',
+            'categoria_id'  => 'required|exists:categorias,id',
+            'marca_id'      => 'required|exists:marcas,id',
+            'unidad_medida' => 'required|in:Unidad,Kg,Gramos',
+            'es_retornable' => 'boolean',
+            'precio_costo'  => 'required|numeric|min:0',
+            'precio_venta'  => 'required|numeric|min:0',
+            'stock_minimo'  => 'required|integer|min:0',
+            'descripcion'   => 'nullable|string',
+            'imagen'        => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048', 
         ]);
 
         if ($request->hasFile('imagen')) {
-            $ruta = $request->file('imagen')->store('productos', 'public');
-            $validados['imagen'] = $ruta;
+            $validados['imagen'] = $request->file('imagen')->store('productos', 'public');
         }
 
-        $validados['estado'] = true; // Todo producto nuevo entra activo
+        $validados['estado'] = true; 
 
         Producto::create($validados);
 
-        return redirect()->back();
+        return redirect()->back()->with('success', 'Producto registrado correctamente.');
     }
 
-    /**
-     * Actualiza un producto existente.
-     */
     public function update(Request $request, Producto $producto)
     {
         $validados = $request->validate([
-            'nombre'       => 'required|string|max:255',
-            'sku'          => 'required|string|max:13|unique:productos,sku,' . $producto->id,
-            'categoria_id' => 'required|exists:categorias,id',
-            'marca_id'     => 'required|exists:marcas,id',
-            'precio_costo' => 'required|numeric',
-            'precio_venta' => 'required|numeric',
-            'stock_minimo' => 'required|integer',
-            'descripcion'  => 'nullable|string',
-            'imagen'       => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'nombre'        => 'required|string|max:255',
+            'codigo_barras' => ['required', 'string', 'max:50', Rule::unique('productos')->ignore($producto->id)],
+            'categoria_id'  => 'required|exists:categorias,id',
+            'marca_id'      => 'required|exists:marcas,id',
+            'unidad_medida' => 'required|in:Unidad,Kg,Gramos',
+            'es_retornable' => 'boolean',
+            'precio_costo'  => 'required|numeric|min:0',
+            'precio_venta'  => 'required|numeric|min:0',
+            'stock_minimo'  => 'required|integer|min:0',
+            'descripcion'   => 'nullable|string',
+            'imagen'        => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
         if ($request->hasFile('imagen')) {
             if ($producto->imagen) {
                 Storage::disk('public')->delete($producto->imagen);
             }
-            $ruta = $request->file('imagen')->store('productos', 'public');
-            $validados['imagen'] = $ruta;
+            $validados['imagen'] = $request->file('imagen')->store('productos', 'public');
         } else {
             unset($validados['imagen']);
         }
 
         $producto->update($validados);
 
-        return redirect()->back();
+        return redirect()->back()->with('success', 'Producto actualizado correctamente.');
     }
 
-    /**
-     * Cambia el estado del producto (Baja Lógica / Reactivación).
-     */
     public function status(Producto $producto)
     {
-        $producto->update([
-            'estado' => !$producto->estado
-        ]);
-
-        return redirect()->back();
+        $producto->update(['estado' => !$producto->estado]);
+        return redirect()->back()->with('success', 'Estado modificado.');
     }
 }

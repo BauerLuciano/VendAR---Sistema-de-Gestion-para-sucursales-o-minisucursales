@@ -10,9 +10,9 @@ return new class extends Migration
     {
         Schema::create('transferencia_sugeridas', function (Blueprint $table) {
             $table->id();
-            // Referencias a la tabla branches (sucursales)
-            $table->foreignId('origen_id')->constrained('branches')->onDelete('cascade');
-            $table->foreignId('destino_id')->constrained('branches')->onDelete('cascade');
+            // Referencias a la tabla sucursales (sucursales)
+            $table->foreignId('origen_id')->constrained('sucursales')->onDelete('cascade');
+            $table->foreignId('destino_id')->constrained('sucursales')->onDelete('cascade');
             // Referencia al producto
             $table->foreignId('producto_id')->constrained('productos')->onDelete('cascade');
             
