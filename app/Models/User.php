@@ -32,7 +32,7 @@ class User extends Authenticatable
         ];
     }
 
-    // <-- AGREGAMOS LA RELACIÓN PARA QUE EL SISTEMA SEPA A QUÉ SUCURSAL PERTENECE
+    
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class, 'branch_id');
