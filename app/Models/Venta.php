@@ -9,7 +9,16 @@ class Venta extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['consumidor_id', 'sucursal_id', 'user_id', 'total', 'metodo_pago', 'fecha'];
+    protected $fillable = [
+        'consumidor_id', 
+        'sucursal_id', 
+        'user_id', 
+        'total', 
+        'metodo_pago', 
+        'fecha',
+        'estado',
+        'motivo_anulacion'
+    ];
 
     public function consumidor() {
         return $this->belongsTo(Consumidor::class); 

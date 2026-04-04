@@ -19,10 +19,6 @@ import Sidebar from '@/Components/Sidebar.vue';
             <main class="p-8 flex-1">
                 <slot />
             </main>
-
-            <footer class="p-4 text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">
-                &copy; 2026 - VENDAR APP - HECHO POR LUCIANO
-            </footer>
         </div>
     </div>
 </template>

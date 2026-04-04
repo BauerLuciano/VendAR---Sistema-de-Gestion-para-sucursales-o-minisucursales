@@ -8,6 +8,8 @@ use App\Http\Controllers\MarcaController;
 use App\Http\Controllers\VentaController;
 use App\Http\Controllers\TransferenciaSugeridaController;
 use App\Http\Controllers\IngresoMercaderiaController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ConsumidorController;
 use App\Models\CuentaCorriente;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -23,33 +25,10 @@ Route::get('/', function () {
     ]);
 });
 
-// DASHBOARD CON LÓGICA DE NEGOCIO
-Route::get('/dashboard', function () {
-    
-    // 1. Cálculo de Deuda Total en la calle
-    $deudaTotal = CuentaCorriente::sum('saldo_deudor');
-
-    // 2. Cálculo de Productos con Bajo Stock (Cruce de tablas)
-    $productosBajoStock = DB::table('productos')
-        ->join('branch_producto', 'productos.id', '=', 'branch_producto.producto_id')
-        ->join('branches', 'branches.id', '=', 'branch_producto.branch_id')
-        ->select(
-            'productos.nombre as producto', 
-            'productos.stock_minimo', 
-            'branch_producto.cantidad_fisica', 
-            'branches.name as sucursal'
-        )
-        ->whereRaw('branch_producto.cantidad_fisica <= productos.stock_minimo')
-        ->get();
-
-    // 3. Mandamos la data a Inertia (Vue)
-    return Inertia::render('Dashboard', [
-        'deudaTotal' => $deudaTotal,
-        'productosBajoStock' => $productosBajoStock
-    ]);
-    
-})->middleware(['auth', 'verified'])->name('dashboard');
-
+// DASHBOARD 
+Route::get('/dashboard', [DashboardController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('dashboard');
 
 Route::middleware('auth')->group(function () {
     
@@ -77,12 +56,6 @@ Route::middleware('auth')->group(function () {
     Route::post('/marcas/{marca}', [MarcaController::class, 'update'])->name('marcas.update');
     Route::patch('/marcas/{marca}/status', [MarcaController::class, 'status'])->name('marcas.status');
 
-    // Rutas de Sucursales (Branch)
-    Route::get('/sucursales', [BranchController::class, 'index'])->name('sucursales.index');
-    Route::post('/sucursales', [BranchController::class, 'store'])->name('sucursales.store');
-    Route::put('/sucursales/{branch}', [BranchController::class, 'update'])->name('sucursales.update');
-    Route::patch('/sucursales/{branch}/status', [BranchController::class, 'status'])->name('sucursales.status');
-
     // Rutas de Transferencias
     Route::get('/transferencias-sugeridas', [TransferenciaSugeridaController::class, 'index'])->name('transferencias.index');
     Route::post('/transferencias-sugeridas/{transferencia}/aprobar', [TransferenciaSugeridaController::class, 'aprobar'])->name('transferencias.aprobar');
@@ -90,15 +63,24 @@ Route::middleware('auth')->group(function () {
     // Rutas de Ingreso de Mercadería
     Route::post('/ingresos', [IngresoMercaderiaController::class, 'store'])->name('ingresos.store');
 
-    // Rutas de Ventas (POS)
-    Route::get('/pos', [VentaController::class, 'index'])->name('pos.index');
-    Route::post('/pos', [VentaController::class, 'store'])->name('ventas.store');  
+    // ==========================================
+    // RUTAS DE VENTAS (HISTORIAL Y POS)
+    // ==========================================
+    Route::get('/ventas', [VentaController::class, 'index'])->name('ventas.index'); // Historial
+    Route::get('/pos', [VentaController::class, 'create'])->name('pos.index');      // Caja de Ricky
+    Route::post('/ventas', [VentaController::class, 'store'])->name('ventas.store');// Guardar venta
+    Route::post('/ventas/{venta}/cancelar', [VentaController::class, 'cancelar'])->name('ventas.cancelar'); 
     
     // Rutas de Sucursales
-    Route::get('/branches', [App\Http\Controllers\BranchController::class, 'index'])->name('branches.index');
-    Route::post('/branches', [App\Http\Controllers\BranchController::class, 'store'])->name('branches.store');
-    Route::put('/branches/{branch}', [App\Http\Controllers\BranchController::class, 'update'])->name('branches.update');
-    Route::put('/branches/{branch}/status', [App\Http\Controllers\BranchController::class, 'status'])->name('branches.status');
-    });
+    Route::get('/branches', [BranchController::class, 'index'])->name('branches.index');
+    Route::post('/branches', [BranchController::class, 'store'])->name('branches.store');
+    Route::put('/branches/{branch}', [BranchController::class, 'update'])->name('branches.update');
+    Route::put('/branches/{branch}/status', [BranchController::class, 'status'])->name('branches.status');
+
+    // Rutas de Clientes (Consumidores)
+    Route::get('/clientes', [ConsumidorController::class, 'index'])->name('consumidores.index');
+    Route::post('/clientes', [ConsumidorController::class, 'store'])->name('consumidores.store');
+    Route::put('/clientes/{consumidor}', [ConsumidorController::class, 'update'])->name('consumidores.update');
+});
 
 require __DIR__.'/auth.php';

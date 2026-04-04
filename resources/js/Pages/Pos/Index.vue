@@ -1,12 +1,15 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+import Swal from 'sweetalert2';
 
 const props = defineProps({
     productos: Array,
     clientes: Array
 });
+
+const page = usePage();
 
 // Estado
 const buscar = ref('');
@@ -52,7 +55,14 @@ const finalizarVenta = () => {
     }, {
         onSuccess: () => {
             carrito.value = [];
-            alert("¡Venta cobrada con éxito!");
+            Swal.fire({
+                title: '¡Cobrado!',
+                text: 'La venta se registró correctamente.',
+                icon: 'success',
+                confirmButtonColor: '#0284c7', 
+                timer: 2000, 
+                showConfirmButton: false
+            });
         }
     });
 };
@@ -63,9 +73,15 @@ const finalizarVenta = () => {
 
     <AuthenticatedLayout>
         <div class="py-6 px-4 sm:px-6 lg:px-8 bg-slate-50 min-h-screen">
-            <div class="mb-8">
-                <h1 class="text-2xl font-black text-slate-800 uppercase tracking-tight">Caja / Punto de Venta</h1>
-                <div class="h-1 w-12 bg-sky-500 mt-1"></div>
+            <div class="mb-8 flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl font-black text-slate-800 uppercase tracking-tight">Caja / Punto de Venta</h1>
+                    <div class="h-1 w-12 bg-sky-500 mt-1"></div>
+                </div>
+            </div>
+
+            <div v-if="page.props.errors.error" class="mb-4 p-4 bg-rose-100 border border-rose-400 text-rose-700 rounded-xl font-bold">
+                {{ page.props.errors.error }}
             </div>
 
             <div class="grid grid-cols-12 gap-6">
@@ -108,14 +124,31 @@ const finalizarVenta = () => {
 
                 <div class="col-span-12 lg:col-span-4">
                     <div class="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col h-[calc(100vh-180px)] sticky top-6">
-                        <div class="p-6 border-b border-slate-50 flex justify-between items-center">
-                            <h2 class="text-xl font-black text-slate-800 flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
-                                Ticket
-                            </h2>
-                            <select v-model="clienteSeleccionado" class="text-xs font-bold border-none bg-slate-100 rounded-lg focus:ring-sky-500">
-                                <option v-for="c in clientes" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-                            </select>
+                        <div class="p-6 border-b border-slate-50 flex flex-col gap-3">
+                            <div class="flex justify-between items-center">
+                                <h2 class="text-xl font-black text-slate-800 flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
+                                    Ticket
+                                </h2>
+                                <select v-model="clienteSeleccionado" class="text-xs font-bold border-none bg-slate-100 rounded-lg focus:ring-sky-500">
+                                    <option v-for="c in clientes" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+                                </select>
+                            </div>
+                            
+                            <div class="flex gap-2 mt-2">
+                                <label class="flex-1 cursor-pointer">
+                                    <input type="radio" v-model="metodoPago" value="efectivo" class="peer sr-only">
+                                    <div class="text-center px-2 py-2 rounded-lg text-xs font-bold uppercase tracking-wider border-2 peer-checked:border-sky-500 peer-checked:bg-sky-50 peer-checked:text-sky-700 text-slate-400 transition-all">Efectivo</div>
+                                </label>
+                                <label class="flex-1 cursor-pointer">
+                                    <input type="radio" v-model="metodoPago" value="tarjeta" class="peer sr-only">
+                                    <div class="text-center px-2 py-2 rounded-lg text-xs font-bold uppercase tracking-wider border-2 peer-checked:border-sky-500 peer-checked:bg-sky-50 peer-checked:text-sky-700 text-slate-400 transition-all">Tarjeta/Transfer.</div>
+                                </label>
+                                <label class="flex-1 cursor-pointer">
+                                    <input type="radio" v-model="metodoPago" value="cuenta_corriente" class="peer sr-only">
+                                    <div class="text-center px-2 py-2 rounded-lg text-xs font-bold uppercase tracking-wider border-2 peer-checked:border-rose-500 peer-checked:bg-rose-50 peer-checked:text-rose-700 text-slate-400 transition-all">Fiado (CC)</div>
+                                </label>
+                            </div>
                         </div>
 
                         <div class="flex-1 overflow-y-auto p-6 space-y-4">
