@@ -3,151 +3,142 @@
 namespace App\Http\Controllers;
 
 use App\Models\Venta;
-use App\Models\VentaDetalle;
+use App\Models\DetalleVenta;
 use App\Models\Producto;
+use App\Models\TurnoCaja;
 use App\Models\Consumidor;
+use App\Models\CuentaCorriente;
+use App\Models\MovimientoCuentaCorriente;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class VentaController extends Controller
 {
-    /**
-     * HISTORIAL: Muestra el listado de todas las ventas
-     */
     public function index()
     {
-        $branchId = auth()->user()->branch_id ?? 1;
-
-        $ventas = Venta::with(['consumidor', 'user', 'detalles.producto'])
-            ->where('sucursal_id', $branchId)
+        $sucursalId = auth()->user()->branch_id ?? 1;
+        $ventas = Venta::with(['consumidor', 'turno.cajero', 'turno.caja', 'detalles.producto'])
+            ->whereHas('turno.caja', function ($q) use ($sucursalId) {
+                $q->where('sucursal_id', $sucursalId);
+            })
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->get(); 
 
         return Inertia::render('Ventas/Index', [
             'ventas' => $ventas
         ]);
     }
 
-    /**
-     * POS: Muestra la pantalla de la Caja
-     */
-    public function create()
-    {
-        $branchId = auth()->user()->branch_id ?? 1;
-
-        return Inertia::render('Pos/Index', [
-            'productos' => Producto::where('estado', true)
-                ->select('id', 'nombre', 'sku', 'precio_venta', 'imagen')
-                ->with(['branch_productos' => function($q) use ($branchId) {
-                    $q->where('branch_id', $branchId);
-                }])
-                ->get(),
-            'clientes' => Consumidor::all(),
-        ]);
-    }
-
-    /**
-     * Procesa la venta final
-     */
     public function store(Request $request)
     {
         $request->validate([
-            'cliente_id' => 'required|exists:consumidores,id',
-            'items' => 'required|array|min:1',
-            'metodo_pago' => 'required|string',
-            'total_venta' => 'required|numeric',
+            'turno_caja_id' => 'required|exists:turno_cajas,id',
+            'consumidor_id' => 'nullable|exists:consumidores,id', 
+            'items'         => 'required|array|min:1',
+            'total'         => 'required|numeric|min:0',
+            'metodo_pago'   => 'required|string',
         ]);
 
-        $consumidor = Consumidor::find($request->cliente_id);
-
-        if ($request->metodo_pago === 'cuenta_corriente') {
-            if ($consumidor->id == 1) {
-                return back()->withErrors(['error' => 'No puedes fiar a un Consumidor Final. Seleccioná un cliente registrado.']);
-            }
-            $cuenta = $consumidor->cuentaCorriente;
-            if (!$cuenta) {
-                return back()->withErrors(['error' => 'Este cliente no tiene una cuenta corriente activa.']);
-            }
-            if (($cuenta->saldo_deudor + $request->total_venta) > $consumidor->limite_cuenta_corriente) {
-                return back()->withErrors(['error' => 'La venta supera el límite de fiado del cliente.']);
-            }
+        if ($request->metodo_pago === 'Cuenta Corriente' && !$request->consumidor_id) {
+            return redirect()->back()->withErrors(['error' => 'Debe seleccionar un cliente para fiar.']);
         }
 
-        return DB::transaction(function () use ($request, $consumidor) {
-            $branchId = auth()->user()->branch_id ?? 1;
+        try {
+            DB::beginTransaction();
 
+            // 1. Crear la Venta
             $venta = Venta::create([
-                'user_id' => auth()->id(),
-                'consumidor_id' => $consumidor->id,
-                'sucursal_id' => $branchId,
-                'total' => $request->total_venta,
-                'metodo_pago' => $request->metodo_pago,
-                'estado' => 'activa', 
-                'fecha' => now(),
+                'turno_caja_id' => $request->turno_caja_id,
+                'consumidor_id' => $request->consumidor_id,
+                'metodo_pago'   => $request->metodo_pago,
+                'total'         => $request->total,
+                'estado'        => 'Completada',
             ]);
 
+            // 2. Lógica de Fiado (Cuenta Corriente)
+            if ($request->metodo_pago === 'Cuenta Corriente') {
+                $cuenta = CuentaCorriente::firstOrCreate(
+                    ['consumidor_id' => $request->consumidor_id],
+                    ['saldo_deudor' => 0]
+                );
+                
+                $cuenta->increment('saldo_deudor', $request->total);
+                
+                // Usamos el modelo para que Laravel encuentre la tabla solo
+                MovimientoCuentaCorriente::create([
+                    'cuenta_corriente_id' => $cuenta->id,
+                    'venta_id'            => $venta->id,
+                    'monto'               => $request->total,
+                    'tipo'                => 'cargo',
+                    'descripcion'         => 'Compra en POS',
+                ]);
+            }
+
+            // 3. Procesar Stock
+            $turno = TurnoCaja::with('caja')->findOrFail($request->turno_caja_id);
+            $sucursalId = $turno->caja->sucursal_id;
+
             foreach ($request->items as $item) {
-                VentaDetalle::create([
-                    'venta_id' => $venta->id,
-                    'producto_id' => $item['id'],
-                    'cantidad' => $item['cantidad'],
+                DetalleVenta::create([
+                    'venta_id'        => $venta->id,
+                    'producto_id'     => $item['id'],
+                    'cantidad'        => $item['cantidad'],
                     'precio_unitario' => $item['precio_venta'],
-                    'subtotal' => $item['cantidad'] * $item['precio_venta'],
+                    'subtotal'        => $item['cantidad'] * $item['precio_venta'],
                 ]);
 
-                DB::table('branch_producto')
-                    ->where('branch_id', $branchId)
+                // ATENCIÓN: Usamos la tabla de la migración: 'producto_sucursal'
+                // Y la columna 'cantidad_fisica'
+                DB::table('producto_sucursal')
                     ->where('producto_id', $item['id'])
+                    ->where('sucursal_id', $sucursalId) 
                     ->decrement('cantidad_fisica', $item['cantidad']);
             }
 
-            if ($request->metodo_pago === 'cuenta_corriente') {
-                $consumidor->cuentaCorriente->increment('saldo_deudor', $request->total_venta);
-                $consumidor->cuentaCorriente->update(['fecha_ultimo_movimiento' => now()]);
-            }
+            DB::commit();
+            return redirect()->back()->with('success', 'Venta exitosa');
 
-            return redirect()->route('pos.index')->with('success', 'Venta registrada.');
-        });
+        } catch (\Exception $e) {
+            DB::rollBack();
+            // Log para debug
+            \Log::error($e->getMessage());
+            return redirect()->back()->withErrors(['error' => 'Falla en BD: ' . $e->getMessage()]);
+        }
     }
 
-    /**
-     * ANULAR VENTA: Devuelve stock posta y ajusta cuentas.
-     */
     public function cancelar(Request $request, Venta $venta)
     {
         $request->validate(['motivo' => 'required|string|max:255']);
-
-        if ($venta->estado === 'anulada') {
-            return back()->withErrors(['error' => 'Esta venta ya se encuentra anulada.']);
-        }
+        if ($venta->estado === 'Cancelada') return back();
 
         return DB::transaction(function () use ($venta, $request) {
-            $branchId = $venta->sucursal_id;
+            $venta->load('turno.caja', 'detalles');
+            $sucursalId = $venta->turno->caja->sucursal_id;
 
-            // 1. REVESTIR STOCK POSTA (Suma lo que se vendió de nuevo al inventario)
             foreach ($venta->detalles as $detalle) {
-                DB::table('branch_producto')
-                    ->where('branch_id', $branchId)
+                DB::table('producto_sucursal')
+                    ->where('sucursal_id', $sucursalId)
                     ->where('producto_id', $detalle->producto_id)
                     ->increment('cantidad_fisica', $detalle->cantidad);
             }
 
-            // 2. REVERTIR DEUDA
-            if ($venta->metodo_pago === 'cuenta_corriente') {
-                $consumidor = Consumidor::find($venta->consumidor_id);
-                if ($consumidor && $consumidor->cuentaCorriente) {
-                    $consumidor->cuentaCorriente->decrement('saldo_deudor', $venta->total);
+            if ($venta->metodo_pago === 'Cuenta Corriente' && $venta->consumidor_id) {
+                $cuenta = CuentaCorriente::where('consumidor_id', $venta->consumidor_id)->first();
+                if ($cuenta) {
+                    $cuenta->decrement('saldo_deudor', $venta->total);
+                    MovimientoCuentaCorriente::create([
+                        'cuenta_corriente_id' => $cuenta->id,
+                        'venta_id'            => $venta->id,
+                        'monto'               => $venta->total,
+                        'tipo'                => 'abono',
+                        'descripcion'         => 'Anulación Venta #' . $venta->id,
+                    ]);
                 }
             }
 
-            // 3. CAMBIAR ESTADO
-            $venta->update([
-                'estado' => 'anulada',
-                'motivo_anulacion' => $request->motivo
-            ]);
-            
-            return redirect()->back()->with('success', 'Venta anulada. El stock volvió al estante.');
+            $venta->update(['estado' => 'Cancelada', 'motivo_anulacion' => $request->motivo]);
+            return redirect()->back();
         });
     }
-}   
+}

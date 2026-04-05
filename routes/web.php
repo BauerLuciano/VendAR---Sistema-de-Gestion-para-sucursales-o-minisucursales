@@ -1,6 +1,5 @@
 <?php
 
-// IMPORT ACTUALIZADO AL ESPAÑOL
 use App\Http\Controllers\SucursalController; 
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProductoController;
@@ -13,6 +12,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ConsumidorController;
 use App\Models\CuentaCorriente;
 use App\Http\Controllers\ProveedorController;
+use App\Http\Controllers\PosController; // <-- AGREGADO PARA LA CAJA
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +39,17 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
+    // ------------------------------------------------------------------
+    // RUTAS DEL PUNTO DE VENTA (NUEVA ARQUITECTURA DE CAJA)
+    // ------------------------------------------------------------------
+    Route::get('/pos', [PosController::class, 'index'])->name('pos.index');
+    Route::post('/pos/abrir-turno', [PosController::class, 'abrirTurno'])->name('pos.abrir_turno');
+
+    // RUTAS DE VENTAS (HISTORIAL)
+    Route::get('/ventas', [VentaController::class, 'index'])->name('ventas.index'); 
+    Route::post('/ventas', [VentaController::class, 'store'])->name('ventas.store');
+    Route::post('/ventas/{venta}/cancelar', [VentaController::class, 'cancelar'])->name('ventas.cancelar'); 
+
     // RUTAS DE PRODUCTOS
     Route::get('/productos', [ProductoController::class, 'index'])->name('productos.index');
     Route::post('/productos', [ProductoController::class, 'store'])->name('productos.store');
@@ -62,20 +73,15 @@ Route::middleware('auth')->group(function () {
     Route::get('/transferencias-sugeridas', [TransferenciaSugeridaController::class, 'index'])->name('transferencias.index');
     Route::post('/transferencias-sugeridas/{transferencia}/aprobar', [TransferenciaSugeridaController::class, 'aprobar'])->name('transferencias.aprobar');
 
-    // Rutas de Ingreso de Mercadería
+    // Rutas de Ingreso de Mercadería (Stock)
+    Route::get('/ingresos', [IngresoMercaderiaController::class, 'index'])->name('ingresos.index');
     Route::post('/ingresos', [IngresoMercaderiaController::class, 'store'])->name('ingresos.store');
-
-    // RUTAS DE VENTAS
-    Route::get('/ventas', [VentaController::class, 'index'])->name('ventas.index'); 
-    Route::get('/pos', [VentaController::class, 'create'])->name('pos.index');     
-    Route::post('/ventas', [VentaController::class, 'store'])->name('ventas.store');
-    Route::post('/ventas/{venta}/cancelar', [VentaController::class, 'cancelar'])->name('ventas.cancelar'); 
  
     // Rutas de Sucursales 
     Route::get('/sucursales', [SucursalController::class, 'index'])->name('sucursales.index');
     Route::post('/sucursales', [SucursalController::class, 'store'])->name('sucursales.store');
     Route::put('/sucursales/{sucursal}', [SucursalController::class, 'update'])->name('sucursales.update');
-    Route::patch('/sucursales/{sucursal}/status', [SucursalController::class, 'status'])->name('sucursales.status'); // Cambiado a PATCH
+    Route::patch('/sucursales/{sucursal}/status', [SucursalController::class, 'status'])->name('sucursales.status');
 
     // Rutas de Clientes (Consumidores)
     Route::get('/clientes', [ConsumidorController::class, 'index'])->name('consumidores.index');
@@ -88,9 +94,6 @@ Route::middleware('auth')->group(function () {
     Route::put('/proveedores/{proveedore}', [ProveedorController::class, 'update'])->name('proveedores.update');
     Route::patch('/proveedores/{proveedore}/status', [ProveedorController::class, 'status'])->name('proveedores.status');
 
-    // Rutas de Ingreso de Mercadería (Stock)
-    Route::get('/ingresos', [IngresoMercaderiaController::class, 'index'])->name('ingresos.index');
-    Route::post('/ingresos', [IngresoMercaderiaController::class, 'store'])->name('ingresos.store');
 });
 
 require __DIR__.'/auth.php';
