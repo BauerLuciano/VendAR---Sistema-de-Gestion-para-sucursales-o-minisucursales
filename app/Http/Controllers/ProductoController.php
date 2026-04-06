@@ -15,7 +15,8 @@ class ProductoController extends Controller
     public function index()
     {
         return Inertia::render('Productos/Index', [
-            'productos' => Producto::with(['categoria', 'marca'])->orderBy('id', 'desc')->get(),
+            // Agregamos 'sucursales' al eager loading para evitar errores de carga
+            'productos' => Producto::with(['categoria', 'marca', 'sucursales'])->orderBy('id', 'desc')->get(),
             'categorias' => Categoria::all(), 
             'marcas' => Marca::all(),         
         ]);
@@ -25,7 +26,6 @@ class ProductoController extends Controller
     {
         $validados = $request->validate([
             'nombre'        => 'required|string|max:255',
-            // Agregamos min:8, max:14 y el regex para puros números
             'codigo_barras' => 'required|string|min:8|max:14|regex:/^[0-9]+$/|unique:productos,codigo_barras',
             'categoria_id'  => 'required|exists:categorias,id',
             'marca_id'      => 'required|exists:marcas,id',
@@ -37,7 +37,6 @@ class ProductoController extends Controller
             'descripcion'   => 'nullable|string',
             'imagen'        => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048', 
         ], [
-            // Mensajes personalizados para que el cajero entienda el error
             'codigo_barras.regex' => 'El código de barras solo puede contener números.',
             'codigo_barras.min' => 'El código debe tener al menos 8 números.',
             'codigo_barras.max' => 'El código no puede superar los 14 números.',

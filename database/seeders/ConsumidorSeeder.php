@@ -12,8 +12,10 @@ class ConsumidorSeeder extends Seeder
         Consumidor::updateOrCreate(
             ['id' => 1],
             [
-                'nombre' => 'Consumidor Final',
-                'dni' => '00000000',
+                'nombre' => 'Consumidor Final', // Acá está completo como querés
+                'apellido' => '-', // Obligatorio por tu migración, le mandamos un guion
+                'documento' => '00000000',
+                'email' => null,
                 'telefono' => null,
                 'direccion' => null,
                 'limite_cuenta_corriente' => 0,

@@ -38,9 +38,11 @@ class VentaController extends Controller
 
         return Inertia::render('Pos/Index', [
             'productos' => Producto::where('estado', true)
-                ->select('id', 'nombre', 'sku', 'precio_venta', 'imagen')
+                // CORRECCIÓN: Usamos codigo_barras porque sku no existe en la tabla productos
+                ->select('id', 'nombre', 'codigo_barras', 'precio_venta', 'imagen')
                 ->with(['branch_productos' => function($q) use ($branchId) {
-                    $q->where('branch_id', $branchId);
+                    // CORRECCIÓN: La columna en la pivot es sucursal_id, no branch_id
+                    $q->where('sucursal_id', $branchId);
                 }])
                 ->get(),
             'clientes' => Consumidor::all(),
@@ -96,8 +98,9 @@ class VentaController extends Controller
                     'subtotal' => $item['cantidad'] * $item['precio_venta'],
                 ]);
 
-                DB::table('branch_producto')
-                    ->where('branch_id', $branchId)
+                // CORRECCIÓN: El nombre de la tabla es producto_sucursal y la columna sucursal_id
+                DB::table('producto_sucursal')
+                    ->where('sucursal_id', $branchId)
                     ->where('producto_id', $item['id'])
                     ->decrement('cantidad_fisica', $item['cantidad']);
             }
@@ -127,8 +130,9 @@ class VentaController extends Controller
 
             // 1. REVESTIR STOCK POSTA (Suma lo que se vendió de nuevo al inventario)
             foreach ($venta->detalles as $detalle) {
-                DB::table('branch_producto')
-                    ->where('branch_id', $branchId)
+                // CORRECCIÓN: Tabla producto_sucursal y columna sucursal_id
+                DB::table('producto_sucursal')
+                    ->where('sucursal_id', $branchId)
                     ->where('producto_id', $detalle->producto_id)
                     ->increment('cantidad_fisica', $detalle->cantidad);
             }
@@ -150,4 +154,4 @@ class VentaController extends Controller
             return redirect()->back()->with('success', 'Venta anulada. El stock volvió al estante.');
         });
     }
-}   
+}

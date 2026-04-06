@@ -32,7 +32,7 @@ class Producto extends Model
         'precio_venta' => 'decimal:2',
     ];
 
-    protected $appends = ['url_imagen'];
+    protected $appends = ['url_imagen', 'sku'];
 
     public function getUrlImagenAttribute()
     {
@@ -42,11 +42,23 @@ class Producto extends Model
         return null;
     }
 
+    public function getSkuAttribute()
+    {
+        return $this->codigo_barras;
+    }
+
     public function categoria() { return $this->belongsTo(Categoria::class, 'categoria_id'); }
     public function marca() { return $this->belongsTo(Marca::class, 'marca_id'); }
     
     public function sucursales() {
-        return $this->belongsToMany(Sucursal::class, 'producto_sucursal')
+        return $this->belongsToMany(Sucursal::class, 'producto_sucursal', 'producto_id', 'sucursal_id')
+                    ->withPivot('cantidad_fisica', 'cantidad_reservada')
+                    ->withTimestamps();
+    }
+
+    // Corregido: Especificamos las columnas para que no busque "branch_id"
+    public function branch_productos() {
+        return $this->belongsToMany(Sucursal::class, 'producto_sucursal', 'producto_id', 'sucursal_id')
                     ->withPivot('cantidad_fisica', 'cantidad_reservada')
                     ->withTimestamps();
     }
