@@ -4,30 +4,34 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash; // <- Importante agregar esto para tu contraseña
 
 class DatabaseSeeder extends Seeder
 {
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // 1. Si tenés seeders de Roles o Sucursales puros, llamalos acá primero.
-        // $this->call([
-        //     RoleSeeder::class,
-        //     BranchSeeder::class,
-        // ]);
+        // 1. Crear TU usuario para que nunca más te quedes afuera
+        User::updateOrCreate(
+            ['email' => 'luciano@gmail.com'], // Busca por tu mail
+            [
+                'name' => 'Luciano',
+                'password' => Hash::make('123456'), // Contraseña encriptada
+            ]
+        );
 
-        // 2. Crear el usuario administrador
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-            // La password por defecto del factory suele ser 'password'
-        ]);
+        // 2. Mantenemos el usuario genérico por si tu colega lo usa para pruebas
+        User::updateOrCreate(
+            ['email' => 'test@example.com'],
+            [
+                'name' => 'Test User',
+                'password' => Hash::make('password'), 
+            ]
+        );
 
-        // 3. Ahora sí, corremos el Fix para atar los datos
         $this->call([
-            FixDatosMaestrosSeeder::class,
+            ConsumidorSeeder::class, 
+            CajaSeeder::class,     
+            FixDatosMaestrosSeeder::class, 
         ]);
     }
 }

@@ -9,6 +9,7 @@ use App\Models\TurnoCaja;
 use App\Models\Consumidor;
 use App\Models\CuentaCorriente;
 use App\Models\MovimientoCuentaCorriente;
+use App\Models\MovimientoCaja; // <-- AGREGADO: Para registrar ingresos y egresos
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -65,7 +66,6 @@ class VentaController extends Controller
                 
                 $cuenta->increment('saldo_deudor', $request->total);
                 
-                // Usamos el modelo para que Laravel encuentre la tabla solo
                 MovimientoCuentaCorriente::create([
                     'cuenta_corriente_id' => $cuenta->id,
                     'venta_id'            => $venta->id,
@@ -73,9 +73,23 @@ class VentaController extends Controller
                     'tipo'                => 'cargo',
                     'descripcion'         => 'Compra en POS',
                 ]);
+            } 
+            // 3. Lógica de CAJA (Ingreso de dinero real)
+            else {
+                // Formateamos el método de pago para que coincida con lo que espera tu Vue (EFECTIVO, MERCADO_PAGO, etc.)
+                $metodoPagoCaja = strtoupper(str_replace(' ', '_', $request->metodo_pago));
+
+                MovimientoCaja::create([
+                    'turno_caja_id' => $request->turno_caja_id,
+                    'tipo'          => 'INGRESO',
+                    'concepto'      => 'VENTA_MOSTRADOR',
+                    'metodo_pago'   => $metodoPagoCaja,
+                    'monto'         => $request->total,
+                    'descripcion'   => 'Ticket de venta #' . $venta->id,
+                ]);
             }
 
-            // 3. Procesar Stock
+            // 4. Procesar Stock
             $turno = TurnoCaja::with('caja')->findOrFail($request->turno_caja_id);
             $sucursalId = $turno->caja->sucursal_id;
 
@@ -88,8 +102,6 @@ class VentaController extends Controller
                     'subtotal'        => $item['cantidad'] * $item['precio_venta'],
                 ]);
 
-                // ATENCIÓN: Usamos la tabla de la migración: 'producto_sucursal'
-                // Y la columna 'cantidad_fisica'
                 DB::table('producto_sucursal')
                     ->where('producto_id', $item['id'])
                     ->where('sucursal_id', $sucursalId) 
@@ -101,7 +113,6 @@ class VentaController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            // Log para debug
             \Log::error($e->getMessage());
             return redirect()->back()->withErrors(['error' => 'Falla en BD: ' . $e->getMessage()]);
         }
@@ -116,6 +127,7 @@ class VentaController extends Controller
             $venta->load('turno.caja', 'detalles');
             $sucursalId = $venta->turno->caja->sucursal_id;
 
+            // 1. Devolver Stock
             foreach ($venta->detalles as $detalle) {
                 DB::table('producto_sucursal')
                     ->where('sucursal_id', $sucursalId)
@@ -123,6 +135,7 @@ class VentaController extends Controller
                     ->increment('cantidad_fisica', $detalle->cantidad);
             }
 
+            // 2. Devolver plata o ajustar deuda
             if ($venta->metodo_pago === 'Cuenta Corriente' && $venta->consumidor_id) {
                 $cuenta = CuentaCorriente::where('consumidor_id', $venta->consumidor_id)->first();
                 if ($cuenta) {
@@ -135,8 +148,21 @@ class VentaController extends Controller
                         'descripcion'         => 'Anulación Venta #' . $venta->id,
                     ]);
                 }
+            } else {
+                // Si la venta fue en efectivo/tarjeta, tenemos que sacar la plata de la caja (Egreso)
+                $metodoPagoCaja = strtoupper(str_replace(' ', '_', $venta->metodo_pago));
+
+                MovimientoCaja::create([
+                    'turno_caja_id' => $venta->turno_caja_id,
+                    'tipo'          => 'EGRESO',
+                    'concepto'      => 'ANULACION_VENTA',
+                    'metodo_pago'   => $metodoPagoCaja,
+                    'monto'         => $venta->total,
+                    'descripcion'   => 'Anulación de venta #' . $venta->id . ' - Motivo: ' . $request->motivo,
+                ]);
             }
 
+            // 3. Actualizar estado
             $venta->update(['estado' => 'Cancelada', 'motivo_anulacion' => $request->motivo]);
             return redirect()->back();
         });

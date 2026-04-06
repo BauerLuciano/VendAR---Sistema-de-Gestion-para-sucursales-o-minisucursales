@@ -1,20 +1,24 @@
 <script setup>
 import { ref } from 'vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Swal from 'sweetalert2';
+import axios from 'axios'; // <-- Importamos axios para pegarle a nuestra API
 
 const props = defineProps({
     cajas: Array
 });
 
-const form = useForm({
+// Usamos ref normal en lugar de useForm para tener más control con la API
+const form = ref({
     caja_id: props.cajas && props.cajas.length > 0 ? props.cajas[0].id : '',
     saldo_inicial: ''
 });
 
-const abrirCaja = () => {
-    if (!form.caja_id) {
+const processing = ref(false);
+
+const abrirCaja = async () => {
+    if (!form.value.caja_id) {
         Swal.fire({
             icon: 'error',
             title: 'Error',
@@ -24,7 +28,7 @@ const abrirCaja = () => {
         return;
     }
 
-    if (form.saldo_inicial === '' || form.saldo_inicial < 0) {
+    if (form.value.saldo_inicial === '' || form.value.saldo_inicial < 0) {
         Swal.fire({
             icon: 'error',
             title: 'Monto Inválido',
@@ -34,22 +38,44 @@ const abrirCaja = () => {
         return;
     }
 
-    form.post(route('pos.abrir_turno'), {
-        preserveScroll: true,
-        onSuccess: () => {
-            // El controlador nos redirigirá automáticamente a Pos/Terminal
-        },
-        onError: (errors) => {
-            if(errors.caja_id) {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Caja Ocupada',
-                    text: errors.caja_id,
-                    confirmButtonColor: '#0284c7'
-                });
-            }
+    processing.value = true;
+
+    try {
+        // 1. Le pegamos al controlador que creamos nosotros (CajaDiariaController)
+        await axios.post('/api/sesiones-caja/abrir', {
+            caja: form.value.caja_id,
+            saldo_inicial_efectivo: form.value.saldo_inicial,
+            saldo_inicial_mp: 0 // Si agregás un input de MP inicial, lo atás acá
+        });
+
+        // 2. Si todo sale bien, lo redirigimos al PANEL DE GESTIÓN DE CAJA
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: 'Turno iniciado correctamente',
+            showConfirmButton: false,
+            timer: 1500
+        });
+
+        router.visit(route('cajadiaria.index'));
+
+    } catch (error) {
+        // 3. Manejo de errores (ej: ya tenés un turno abierto)
+        let errorMsg = 'Ocurrió un error al intentar abrir la caja.';
+        if (error.response && error.response.data && error.response.data.error) {
+            errorMsg = error.response.data.error;
         }
-    });
+        
+        Swal.fire({
+            icon: 'warning',
+            title: 'No se pudo abrir',
+            text: errorMsg,
+            confirmButtonColor: '#0284c7'
+        });
+    } finally {
+        processing.value = false;
+    }
 };
 </script>
 
@@ -67,7 +93,7 @@ const abrirCaja = () => {
                     <div class="z-10">
                         <span class="bg-sky-500 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg shadow-sky-500/30">Punto de Venta</span>
                         <h2 class="text-4xl font-black tracking-tighter mt-4 leading-none">Apertura<br><span class="text-sky-400">de Turno</span></h2>
-                        <p class="text-slate-400 text-sm mt-4 font-medium">Iniciá tu jornada declarando el fondo de caja para habilitar el cobro a clientes.</p>
+                        <p class="text-slate-400 text-sm mt-4 font-medium">Iniciá tu jornada declarando el fondo de caja para habilitar el cobro a clientes y la gestión de movimientos.</p>
                     </div>
 
                     <div class="z-10 mt-12 md:mt-0 flex items-center gap-3">
@@ -125,10 +151,10 @@ const abrirCaja = () => {
 
                             <button 
                                 type="submit" 
-                                :disabled="form.processing"
+                                :disabled="processing"
                                 class="w-full bg-sky-600 hover:bg-sky-500 text-white font-black uppercase tracking-widest py-4 rounded-xl shadow-lg shadow-sky-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-4"
                             >
-                                <span v-if="form.processing">Abriendo Turno...</span>
+                                <span v-if="processing">Abriendo Turno...</span>
                                 <span v-else>Iniciar Jornada</span>
                             </button>
                         </div>

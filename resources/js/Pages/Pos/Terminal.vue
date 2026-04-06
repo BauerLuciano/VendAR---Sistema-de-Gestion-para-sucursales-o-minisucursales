@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed } from 'vue';
 import Swal from 'sweetalert2';
 
 const props = defineProps({
@@ -12,12 +12,10 @@ const props = defineProps({
 
 const page = usePage();
 
-// Estado general
 const buscar = ref('');
 const carrito = ref([]);
 const metodoPago = ref('Efectivo'); 
 
-// --- NUEVO: ESTADO DEL BUSCADOR DE CLIENTES ---
 const clienteSeleccionado = ref(null); 
 const busquedaCliente = ref('');
 const mostrarDropdownClientes = ref(false);
@@ -40,9 +38,7 @@ const clienteActivoObj = computed(() => {
     if (!clienteSeleccionado.value) return null;
     return props.clientes.find(c => c.id === clienteSeleccionado.value);
 });
-// ----------------------------------------------
 
-// Buscador de Productos
 const productosFiltrados = computed(() => {
     if (buscar.value.length < 2) return [];
     return props.productos.filter(p => 
@@ -73,7 +69,6 @@ const totalVenta = computed(() => {
 const finalizarVenta = () => {
     if (carrito.value.length === 0) return;
     
-    // Mostramos un loading para que el usuario sepa que se está procesando
     Swal.fire({
         title: 'Procesando cobro...',
         didOpen: () => { Swal.showLoading() },
@@ -87,24 +82,23 @@ const finalizarVenta = () => {
         total: totalVenta.value,
         metodo_pago: metodoPago.value
     }, {
+        // ELIMINÉ EL onFinish PARA QUE NO TE CIERRE EL CARTEL ANTES DE TIEMPO
         onSuccess: () => {
             carrito.value = [];
             clienteSeleccionado.value = null;
             Swal.fire({
                 icon: 'success',
                 title: '¡Venta Exitosa!',
-                text: 'El ticket se registró y el stock fue actualizado.',
-                timer: 2000
+                text: 'El ticket se registró y la caja sumó el ingreso.',
+                timer: 2500
             });
         },
         onError: (errors) => {
-            // Cerramos el loading y mostramos el error real
-            Swal.close();
             console.error(errors);
             Swal.fire({
                 icon: 'error',
                 title: 'Error al cobrar',
-                text: errors.error || 'Ocurrió un problema inesperado en el servidor.',
+                text: errors.error || 'Ocurrió un problema validando la venta.',
             });
         }
     });
