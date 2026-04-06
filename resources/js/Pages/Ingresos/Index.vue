@@ -49,7 +49,7 @@ const abrirNuevo = () => {
                             <th class="p-4">Sucursal</th>
                             <th class="p-4">Proveedor</th>
                             <th class="p-4 text-right">Total Costo</th>
-                            <th class="p-4 text-center rounded-r-xl">Auditar</th>
+                            <th class="p-4 text-center rounded-r-xl">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>

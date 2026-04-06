@@ -10,30 +10,23 @@ class Venta extends Model
     use HasFactory;
 
     protected $fillable = [
+        'turno_caja_id',
         'consumidor_id', 
-        'sucursal_id', 
-        'user_id', 
-        'total', 
         'metodo_pago', 
-        'fecha',
+        'total', 
         'estado',
-        'motivo_anulacion'
+        'motivo_anulacion' 
     ];
 
+    public function turno() { 
+        return $this->belongsTo(TurnoCaja::class, 'turno_caja_id'); 
+    }
+    
     public function consumidor() {
         return $this->belongsTo(Consumidor::class); 
     }
     
     public function detalles() {
-        return $this->hasMany(VentaDetalle::class); 
-    }
-
-    public function user() {
-        return $this->belongsTo(User::class);
-    }
-
-    public function branch()
-    {
-        return $this->belongsTo(Branch::class, 'sucursal_id');
+        return $this->hasMany(DetalleVenta::class); 
     }
 }
