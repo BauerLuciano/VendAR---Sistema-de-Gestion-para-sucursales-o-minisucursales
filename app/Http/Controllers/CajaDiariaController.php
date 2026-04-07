@@ -37,6 +37,9 @@ class CajaDiariaController extends Controller
                     'saldo_final_efectivo_real' => $turno->saldo_final_efectivo_real ?? 0,
                     'saldo_final_mp_real' => $turno->saldo_final_mp_real ?? 0,
                     'saldo_final_transf_real' => $turno->saldo_final_transf_real ?? 0,
+                    
+                    // SOLUCIÓN 1: Acá exponemos la columna al frontend
+                    'observaciones' => $turno->observaciones_cierre ?? '', 
                 ];
             });
 
@@ -71,53 +74,68 @@ class CajaDiariaController extends Controller
     /**
      * Abre una nueva sesión de caja
      */
+
     public function abrirCaja(Request $request)
     {
         try {
             $request->validate([
                 'caja' => 'required|exists:cajas,id',
                 'saldo_inicial_efectivo' => 'required|numeric|min:0',
+                'saldo_inicial_mp' => 'nullable|numeric|min:0',
             ]);
 
             $user = auth()->user();
-
-            // 1. Buscamos la caja física para obtener su sucursal_id
             $cajaFisica = \App\Models\Caja::find($request->caja);
 
             if (!$cajaFisica) {
                 return response()->json(['error' => 'La caja seleccionada no existe.'], 404);
             }
 
+            // Capturamos asegurando que sean números decimales (float)
+            $efectivo = (float) $request->input('saldo_inicial_efectivo', 0);
+            $mp = (float) $request->input('saldo_inicial_mp', 0);
+
             DB::beginTransaction();
             
-            // 2. Creamos el turno. 
-            // FIX: Enviamos saldo_inicial para cumplir con la restricción NOT NULL de tu DB
+            // 1. Creamos el turno (cabecera)
             $turno = \App\Models\TurnoCaja::create([
                 'caja_id'        => $cajaFisica->id,
                 'user_id'        => $user->id,
                 'sucursal_id'    => $cajaFisica->sucursal_id, 
-                'saldo_inicial'  => $request->saldo_inicial_efectivo, // Columna obligatoria en tu DB
-                'monto_apertura' => $request->saldo_inicial_efectivo, // Columna nueva
+                'saldo_inicial'  => $efectivo, // Guardamos efectivo como base para la DB
+                'monto_apertura' => $efectivo, 
                 'fecha_apertura' => now(),
                 'estado'         => 'Abierto',
             ]);
 
-            // 3. Registramos el movimiento inicial
-            \App\Models\MovimientoCaja::create([
-                'turno_caja_id' => $turno->id,
-                'tipo'          => 'INGRESO',
-                'concepto'      => 'FONDO_INICIAL',
-                'metodo_pago'   => 'EFECTIVO',
-                'monto'         => $request->saldo_inicial_efectivo,
-                'descripcion'   => 'Apertura de caja'
-            ]);
+            if ($efectivo > 0 || ($efectivo == 0 && $mp == 0)) {
+                \App\Models\MovimientoCaja::create([
+                    'turno_caja_id' => $turno->id,
+                    'tipo'          => 'INGRESO',
+                    'concepto'      => 'FONDO_INICIAL',
+                    'metodo_pago'   => 'EFECTIVO',
+                    'monto'         => $efectivo,
+                    'descripcion'   => 'Apertura de caja (Fondo Efectivo)'
+                ]);
+            }
+
+            if ($mp > 0) {
+                \App\Models\MovimientoCaja::create([
+                    'turno_caja_id' => $turno->id,
+                    'tipo'          => 'INGRESO',
+                    'concepto'      => 'FONDO_INICIAL',
+                    'metodo_pago'   => 'MERCADO_PAGO',
+                    'monto'         => $mp,
+                    'descripcion'   => 'Apertura de caja (Fondo Mercado Pago)'
+                ]);
+            }
 
             DB::commit();
             return response()->json(['message' => 'Caja abierta correctamente']);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['error' => 'ERROR DE BASE DE DATOS: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'ERROR DE BD: ' . $e->getMessage()], 500);
         }
     }
 
@@ -235,8 +253,6 @@ class CajaDiariaController extends Controller
             return response()->json(['error' => 'Esta caja ya está cerrada'], 400);
         }
 
-        // CORRECCIÓN: Quitamos 'monto_cierre' si tu DB no tiene esa columna, o lo incluimos 
-        // solo si corriste la migración anterior. Por las dudas lo mapeamos a saldo_final_efectivo_real.
         $dataUpdate = [
             'estado' => 'Cerrado',
             'fecha_cierre' => Carbon::now(),
@@ -246,7 +262,6 @@ class CajaDiariaController extends Controller
             'saldo_final_transf_real' => $request->saldo_final_transf_real,
             'observaciones_cierre' => $request->observaciones,
         ];
-
 
         $dataUpdate['monto_cierre'] = $request->saldo_final_efectivo_real;
 

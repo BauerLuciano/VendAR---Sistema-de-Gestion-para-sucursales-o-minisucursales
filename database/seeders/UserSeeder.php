@@ -21,6 +21,6 @@ class UserSeeder extends Seeder
 
         // ¡ACÁ ESTÁ LA MAGIA DE SPATIE!
         // Le damos el poder absoluto. (Asegurate de que el nombre coincida exacto con cómo lo creaste en tu RoleSeeder)
-        $user->assignRole('SuperAdmin'); 
+        $user->assignRole('Administrador Global'); 
     }
 }

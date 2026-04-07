@@ -2,17 +2,22 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
+import Swal from 'sweetalert2'; // Agregamos SweetAlert para los mensajitos
 
 const props = defineProps({
     consumidores: Array
 });
 
-// Estado del Modal
+// Estado del Modal de Edición/Creación
 const isModalOpen = ref(false);
 const isEditing = ref(false);
 const currentId = ref(null);
 
-// Formulario de Inertia mapeado con la BD
+// Estado del Modal de Cobro
+const isCobroModalOpen = ref(false);
+const clienteSeleccionado = ref(null);
+
+// Formulario de Cliente
 const form = useForm({
     nombre: '',
     apellido: '',
@@ -24,9 +29,15 @@ const form = useForm({
     estado: true,
 });
 
-// Métodos
+// Formulario de Cobro
+const formCobro = useForm({
+    monto: '',
+    metodo_pago: 'EFECTIVO'
+});
+
+// === MÉTODOS PARA CREAR/EDITAR ===
 const openModal = (cliente = null) => {
-    form.clearErrors(); // Limpiar errores previos si los hubiera
+    form.clearErrors();
     if (cliente) {
         isEditing.value = true;
         currentId.value = cliente.id;
@@ -42,7 +53,7 @@ const openModal = (cliente = null) => {
         isEditing.value = false;
         currentId.value = null;
         form.reset();
-        form.estado = true; // Por defecto activo
+        form.estado = true;
     }
     isModalOpen.value = true;
 };
@@ -56,15 +67,56 @@ const closeModal = () => {
 const submitForm = () => {
     if (isEditing.value) {
         form.put(route('consumidores.update', currentId.value), {
-            onSuccess: () => closeModal()
+            onSuccess: () => {
+                closeModal();
+                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Cliente actualizado', showConfirmButton: false, timer: 3000 });
+            }
         });
     } else {
         form.post(route('consumidores.store'), {
-            onSuccess: () => closeModal()
+            onSuccess: () => {
+                closeModal();
+                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Cliente registrado', showConfirmButton: false, timer: 3000 });
+            }
         });
     }
 };
 
+// === MÉTODOS PARA COBRAR ===
+const openCobroModal = (cliente) => {
+    clienteSeleccionado.value = cliente;
+    formCobro.reset();
+    // Sugerimos por defecto que pague toda la deuda, pero puede editarlo
+    formCobro.monto = cliente.cuenta_corriente?.saldo_deudor || 0;
+    isCobroModalOpen.value = true;
+};
+
+const closeCobroModal = () => {
+    isCobroModalOpen.value = false;
+    formCobro.reset();
+    clienteSeleccionado.value = null;
+};
+
+const submitCobro = () => {
+    formCobro.post(route('consumidores.cobrar', clienteSeleccionado.value.id), {
+        onSuccess: () => {
+            closeCobroModal();
+            Swal.fire({ 
+                icon: 'success', 
+                title: 'Cobro Registrado', 
+                text: 'El pago impactó en la cuenta del cliente y en tu caja abierta.',
+                timer: 4000
+            });
+        },
+        onError: (errors) => {
+            if(errors.monto) {
+                Swal.fire('Atención', errors.monto, 'warning');
+            }
+        }
+    });
+};
+
+// === UTILIDADES ===
 const formatearDinero = (monto) => {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(monto || 0);
 };
@@ -140,9 +192,20 @@ const calcularDisponible = (limite, deuda) => {
                                 </td>
 
                                 <td class="p-4 text-center">
-                                    <button @click="openModal(cliente)" class="text-slate-400 hover:text-sky-500 transition-colors p-2" title="Editar">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                    </button>
+                                    <div class="flex justify-center items-center gap-2">
+                                        <button @click="openModal(cliente)" class="text-slate-400 hover:text-sky-500 transition-colors p-2" title="Editar">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                        </button>
+                                        
+                                        <button 
+                                            v-if="cliente.cuenta_corriente?.saldo_deudor > 0"
+                                            @click="openCobroModal(cliente)" 
+                                            class="bg-emerald-100 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-colors p-2 rounded-lg" 
+                                            title="Cobrar Deuda"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         </tbody>
@@ -280,5 +343,63 @@ const calcularDisponible = (limite, deuda) => {
                 </form>
             </div>
         </div>
+
+        <div v-if="isCobroModalOpen" class="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50">
+                    <h3 class="text-lg font-black text-emerald-800 uppercase tracking-tight flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                        Cobrar Deuda
+                    </h3>
+                    <button @click="closeCobroModal" class="text-slate-400 hover:text-rose-500 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+
+                <div class="p-6">
+                    <p class="text-sm text-slate-500 mb-4">
+                        Estás a punto de registrar un pago para <strong>{{ clienteSeleccionado?.nombre }} {{ clienteSeleccionado?.apellido }}</strong>.
+                        <br>Deuda actual: <span class="font-bold text-rose-600">{{ formatearDinero(clienteSeleccionado?.cuenta_corriente?.saldo_deudor) }}</span>
+                    </p>
+
+                    <form @submit.prevent="submitCobro" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">Monto a abonar</label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-2.5 font-bold text-slate-400">$</span>
+                                <input 
+                                    v-model="formCobro.monto" 
+                                    type="number" 
+                                    step="0.01" 
+                                    min="1"
+                                    :max="clienteSeleccionado?.cuenta_corriente?.saldo_deudor"
+                                    class="w-full pl-8 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-emerald-500 focus:border-emerald-500 font-bold text-slate-800" 
+                                    required
+                                >
+                            </div>
+                            <p v-if="formCobro.errors.monto" class="mt-1 text-xs text-rose-500 font-bold">{{ formCobro.errors.monto }}</p>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">Medio de Pago</label>
+                            <select v-model="formCobro.metodo_pago" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-emerald-500 focus:border-emerald-500 font-medium text-slate-700">
+                                <option value="EFECTIVO">Efectivo</option>
+                                <option value="MERCADO_PAGO">Mercado Pago</option>
+                                <option value="TRANSFERENCIA">Transferencia Bancaria</option>
+                            </select>
+                        </div>
+
+                        <div class="pt-4 flex justify-end gap-3 mt-4">
+                            <button type="button" @click="closeCobroModal" class="px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">Cancelar</button>
+                            <button type="submit" :disabled="formCobro.processing" class="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold py-2 px-6 rounded-xl shadow-sm shadow-emerald-600/30 transition-all flex items-center gap-2">
+                                <span v-if="formCobro.processing">Procesando...</span>
+                                <span v-else>Confirmar Pago</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
     </AuthenticatedLayout>
 </template>
