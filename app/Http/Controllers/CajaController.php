@@ -10,19 +10,28 @@ use Inertia\Inertia;
 class CajaController extends Controller
 {
     public function index()
-    {
-        $user = auth()->user();
-        
-        $query = Caja::with('sucursal');
-        if ($user->branch_id) {
-            $query->where('sucursal_id', $user->branch_id);
-        }
-
-        return Inertia::render('Cajas/Index', [
-            'cajas' => $query->orderBy('id', 'desc')->get(),
-            'sucursales' => $user->branch_id ? Sucursal::where('id', $user->branch_id)->get() : Sucursal::all()
-        ]);
+{
+    $user = auth()->user();
+    
+    // 1. Verificamos si es un "Jefe" (SuperAdmin o Admin Global)
+    $esJefe = $user->hasRole(['SuperAdmin', 'Administrador Global']);
+    
+    $query = Caja::with('sucursal');
+    
+    if (!$esJefe && $user->branch_id) {
+        $query->where('sucursal_id', $user->branch_id);
     }
+    $cajas = $query->orderBy('id', 'desc')->get();
+
+    $sucursales = $esJefe 
+        ? Sucursal::all() 
+        : Sucursal::where('id', $user->branch_id)->get();
+
+    return Inertia::render('Cajas/Index', [
+        'cajas' => $cajas,
+        'sucursales' => $sucursales
+    ]);
+}
 
     public function store(Request $request)
     {
