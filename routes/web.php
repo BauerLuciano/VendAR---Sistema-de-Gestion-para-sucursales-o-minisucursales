@@ -16,7 +16,7 @@ use App\Http\Controllers\{
     CajaController,
     CajaDiariaController,
     RoleController,
-    UsuarioController
+    UsuarioController,
 };
 use App\Models\CuentaCorriente;
 use Illuminate\Foundation\Application;
@@ -158,6 +158,10 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global'])->group(funct
     // Seguridad y Usuarios
     Route::resource('roles', RoleController::class);
     Route::resource('usuarios', UsuarioController::class);
+
+    // CRUD de Cajas Físicas
+    Route::resource('cajas', CajaController::class)->except(['create', 'show', 'edit']);
+    Route::patch('/cajas/{caja}/status', [CajaController::class, 'toggleEstado'])->name('cajas.status');
     
     // Cancelar Ventas (Solo el jefe puede anular un ticket)
     Route::post('/ventas/{venta}/cancelar', [VentaController::class, 'cancelar'])->name('ventas.cancelar'); 
