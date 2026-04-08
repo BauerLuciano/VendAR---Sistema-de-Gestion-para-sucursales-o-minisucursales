@@ -36,6 +36,11 @@ return [
 
     'mailers' => [
 
+        // 👇 NUESTRO SDK DE MAILTRAP 👇
+        'mailtrap-sdk' => [
+            'transport' => 'mailtrap-sdk'
+        ],
+
         'smtp' => [
             'transport' => 'smtp',
             'url' => env('MAIL_URL'),

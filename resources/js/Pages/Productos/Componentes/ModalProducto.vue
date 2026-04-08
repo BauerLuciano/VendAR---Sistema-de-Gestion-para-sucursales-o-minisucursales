@@ -7,7 +7,8 @@ const props = defineProps({
     mostrar: Boolean,
     producto: Object,
     categorias: Array,
-    marcas: Array
+    marcas: Array,
+    proveedores: Array // <-- Recibimos proveedores
 });
 
 const emit = defineEmits(['cerrar']);
@@ -19,6 +20,7 @@ const formulario = useForm({
     codigo_barras: '',
     categoria_id: '',
     marca_id: '',
+    proveedor_id: '', // <-- Agregado al form
     unidad_medida: 'Unidad',
     es_retornable: false,
     precio_costo: '',
@@ -36,6 +38,7 @@ watch(() => props.producto, (nuevoValor) => {
         formulario.codigo_barras = nuevoValor.codigo_barras;
         formulario.categoria_id = nuevoValor.categoria_id;
         formulario.marca_id = nuevoValor.marca_id;
+        formulario.proveedor_id = nuevoValor.proveedor_id || ''; // <-- Seteamos en edición
         formulario.unidad_medida = nuevoValor.unidad_medida;
         formulario.es_retornable = Boolean(nuevoValor.es_retornable);
         formulario.precio_costo = nuevoValor.precio_costo;
@@ -105,12 +108,6 @@ const guardar = () => {
                 </div>
 
                 <div>
-                    <label class="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Stock Mínimo Global</label>
-                    <input v-model="formulario.stock_minimo" type="number" min="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2" :class="{'border-rose-500': formulario.errors.stock_minimo}">
-                    <p v-if="formulario.errors.stock_minimo" class="text-rose-500 text-[10px] mt-1 font-bold">{{ formulario.errors.stock_minimo }}</p>
-                </div>
-
-                <div>
                     <label class="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Categoría</label>
                     <select v-model="formulario.categoria_id" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2" :class="{'border-rose-500': formulario.errors.categoria_id}" required>
                         <option value="" disabled>Seleccione...</option>
@@ -129,6 +126,15 @@ const guardar = () => {
                 </div>
 
                 <div>
+                    <label class="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Proveedor Principal</label>
+                    <select v-model="formulario.proveedor_id" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2" :class="{'border-rose-500': formulario.errors.proveedor_id}" required>
+                        <option value="" disabled>Seleccione...</option>
+                        <option v-for="prov in proveedores" :key="prov.id" :value="prov.id">{{ prov.razon_social }}</option>
+                    </select>
+                    <p v-if="formulario.errors.proveedor_id" class="text-rose-500 text-[10px] mt-1 font-bold">{{ formulario.errors.proveedor_id }}</p>
+                </div>
+
+                <div>
                     <label class="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Unidad de Medida</label>
                     <select v-model="formulario.unidad_medida" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 font-bold text-sky-700" :class="{'border-rose-500': formulario.errors.unidad_medida}">
                         <option value="Unidad">Unidad</option>
@@ -138,9 +144,10 @@ const guardar = () => {
                     <p v-if="formulario.errors.unidad_medida" class="text-rose-500 text-[10px] mt-1 font-bold">{{ formulario.errors.unidad_medida }}</p>
                 </div>
 
-                <div class="flex items-center mt-6">
-                    <input type="checkbox" id="retornable" v-model="formulario.es_retornable" class="w-5 h-5 text-sky-600 bg-slate-50 border-slate-300 rounded focus:ring-sky-500">
-                    <label for="retornable" class="ml-2 text-sm font-bold text-slate-700 uppercase">Es Envase Retornable</label>
+                <div>
+                    <label class="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Stock Mínimo Global</label>
+                    <input v-model="formulario.stock_minimo" type="number" min="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2" :class="{'border-rose-500': formulario.errors.stock_minimo}">
+                    <p v-if="formulario.errors.stock_minimo" class="text-rose-500 text-[10px] mt-1 font-bold">{{ formulario.errors.stock_minimo }}</p>
                 </div>
 
                 <div>
@@ -153,6 +160,11 @@ const guardar = () => {
                     <label class="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Precio Venta ($)</label>
                     <input v-model="formulario.precio_venta" type="number" step="0.01" min="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-emerald-700 font-bold" :class="{'border-rose-500': formulario.errors.precio_venta}" required>
                     <p v-if="formulario.errors.precio_venta" class="text-rose-500 text-[10px] mt-1 font-bold">{{ formulario.errors.precio_venta }}</p>
+                </div>
+
+                <div class="col-span-2 flex items-center mt-2 mb-2 border border-slate-100 p-4 rounded-xl bg-slate-50">
+                    <input type="checkbox" id="retornable" v-model="formulario.es_retornable" class="w-5 h-5 text-sky-600 bg-white border-slate-300 rounded focus:ring-sky-500">
+                    <label for="retornable" class="ml-2 text-sm font-bold text-slate-700 uppercase">Es Envase Retornable</label>
                 </div>
 
                 <div class="col-span-2">

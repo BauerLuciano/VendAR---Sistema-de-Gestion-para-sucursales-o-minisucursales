@@ -9,11 +9,13 @@ import Swal from 'sweetalert2';
 const props = defineProps({ 
     productos: Array, 
     categorias: Array, 
-    marcas: Array 
+    marcas: Array,
+    proveedores: Array // <-- Recibimos proveedores
 });
 
 const verModal = ref(false);
 const verDetalle = ref(false);
+const verStock = ref(false); // <-- Estado para el modal de Stock
 const seleccionado = ref(null);
 
 const abrirNuevo = () => { 
@@ -29,6 +31,11 @@ const abrirEditar = (p) => {
 const abrirDetalle = (p) => { 
     seleccionado.value = p; 
     verDetalle.value = true; 
+};
+
+const abrirStock = (p) => {
+    seleccionado.value = p;
+    verStock.value = true;
 };
 
 const cerrarModal = () => {
@@ -130,7 +137,11 @@ const toggleEstado = (p) => {
                                     </td>
                                     
                                     <td class="p-4">
-                                        <div class="flex justify-center gap-3">
+                                        <div class="flex justify-center gap-2">
+                                            <button @click="abrirStock(p)" class="bg-indigo-100 text-indigo-600 p-2 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm" title="Ver Stock Físico">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                                            </button>
+
                                             <button @click="abrirDetalle(p)" class="bg-sky-100 text-sky-600 p-2 rounded-xl hover:bg-sky-600 hover:text-white transition-all shadow-sm" title="Ver Detalle">
                                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                                             </button>
@@ -143,7 +154,6 @@ const toggleEstado = (p) => {
                                                 :class="p.estado ? 'bg-rose-100 text-rose-600 hover:bg-rose-600' : 'bg-emerald-100 text-emerald-600 hover:bg-emerald-600'" 
                                                 class="p-2 rounded-xl hover:text-white transition-all shadow-sm" 
                                                 :title="p.estado ? 'Desactivar' : 'Activar'">
-                                                
                                                 <svg v-if="p.estado" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                                                 <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                             </button>
@@ -162,6 +172,7 @@ const toggleEstado = (p) => {
             :producto="seleccionado" 
             :categorias="categorias" 
             :marcas="marcas" 
+            :proveedores="proveedores"
             @cerrar="cerrarModal" 
         />
 
@@ -170,5 +181,33 @@ const toggleEstado = (p) => {
             :producto="seleccionado" 
             @cerrar="verDetalle = false" 
         />
+
+        <div v-if="verStock && seleccionado" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div class="bg-indigo-600 p-4 text-white text-center font-black uppercase tracking-widest text-xs">
+                    Disponibilidad Física
+                </div>
+                <div class="p-6">
+                    <h3 class="text-xl font-black text-slate-800 text-center mb-6">{{ seleccionado.nombre }}</h3>
+                    
+                    <div class="space-y-3">
+                        <div v-if="!seleccionado.sucursales || seleccionado.sucursales.length === 0" class="text-center text-slate-500 italic text-sm">
+                            Este producto no tiene stock registrado en ninguna sucursal.
+                        </div>
+                        
+                        <div v-for="suc in seleccionado.sucursales" :key="suc.id" class="flex justify-between items-center p-3 border-b border-slate-100 bg-slate-50 rounded-xl">
+                            <span class="font-bold text-slate-700">{{ suc.nombre }}</span>
+                            <span class="px-3 py-1 bg-indigo-100 text-indigo-700 font-black rounded-lg shadow-sm">
+                                {{ suc.pivot?.cantidad_fisica || 0 }} {{ seleccionado.unidad_medida }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <button @click="verStock = false" class="w-full mt-6 bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition-all uppercase text-xs tracking-widest shadow-lg">
+                        Cerrar Stock
+                    </button>
+                </div>
+            </div>
+        </div>
     </AuthenticatedLayout>
 </template>

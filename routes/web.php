@@ -17,6 +17,8 @@ use App\Http\Controllers\{
     CajaDiariaController,
     RoleController,
     UsuarioController,
+    OrdenCompraController,
+    ReposicionController,
 };
 use App\Models\CuentaCorriente;
 use Illuminate\Foundation\Application;
@@ -162,9 +164,16 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global'])->group(funct
     // CRUD de Cajas Físicas
     Route::resource('cajas', CajaController::class)->except(['create', 'show', 'edit']);
     Route::patch('/cajas/{caja}/status', [CajaController::class, 'toggleEstado'])->name('cajas.status');
-    
-    // Cancelar Ventas (Solo el jefe puede anular un ticket)
     Route::post('/ventas/{venta}/cancelar', [VentaController::class, 'cancelar'])->name('ventas.cancelar'); 
+
+    // Órdenes de Compra
+    Route::resource('ordenes-compra', OrdenCompraController::class)->except(['create', 'show', 'edit', 'update']);
+    Route::post('/ordenes-compra/sugerencias', [OrdenCompraController::class, 'generarSugerencias'])->name('ordenes-compra.sugerencias');
+    Route::patch('/ordenes-compra/{ordenCompra}/estado', [OrdenCompraController::class, 'cambiarEstado'])->name('ordenes-compra.estado');
+
+    // Reposición
+    Route::get('/reposicion', [App\Http\Controllers\ReposicionController::class, 'index'])->name('reposicion.index');
+    Route::post('/reposicion/generar', [App\Http\Controllers\ReposicionController::class, 'generarPreOrdenes'])->name('reposicion.generar');
 });
 
 require __DIR__.'/auth.php';

@@ -23,6 +23,7 @@ class Producto extends Model
         'stock_minimo',
         'imagen',
         'estado',
+        'proveedor_id',
     ];
 
     protected $casts = [
@@ -61,5 +62,9 @@ class Producto extends Model
         return $this->belongsToMany(Sucursal::class, 'producto_sucursal', 'producto_id', 'sucursal_id')
                     ->withPivot('cantidad_fisica', 'cantidad_reservada')
                     ->withTimestamps();
+    }
+
+    public function proveedor() { 
+        return $this->belongsTo(Proveedor::class, 'proveedor_id'); 
     }
 }

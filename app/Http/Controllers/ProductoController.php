@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Producto;
 use App\Models\Categoria;
 use App\Models\Marca;
+use App\Models\Proveedor; // <-- Importamos Proveedor
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -15,10 +16,11 @@ class ProductoController extends Controller
     public function index()
     {
         return Inertia::render('Productos/Index', [
-            // Agregamos 'sucursales' al eager loading para evitar errores de carga
-            'productos' => Producto::with(['categoria', 'marca', 'sucursales'])->orderBy('id', 'desc')->get(),
+            // Eager loading: Traemos sucursales y también el proveedor
+            'productos' => Producto::with(['categoria', 'marca', 'sucursales', 'proveedor'])->orderBy('id', 'desc')->get(),
             'categorias' => Categoria::all(), 
             'marcas' => Marca::all(),         
+            'proveedores' => Proveedor::where('estado', true)->get(), // <-- Pasamos proveedores a la vista
         ]);
     }
 
@@ -29,6 +31,7 @@ class ProductoController extends Controller
             'codigo_barras' => 'required|string|min:8|max:14|regex:/^[0-9]+$/|unique:productos,codigo_barras',
             'categoria_id'  => 'required|exists:categorias,id',
             'marca_id'      => 'required|exists:marcas,id',
+            'proveedor_id'  => 'required|exists:proveedores,id', // <-- Validación del proveedor
             'unidad_medida' => 'required|in:Unidad,Kg,Gramos',
             'es_retornable' => 'boolean',
             'precio_costo'  => 'required|numeric|min:0',
@@ -60,6 +63,7 @@ class ProductoController extends Controller
             'codigo_barras' => ['required', 'string', 'min:8', 'max:14', 'regex:/^[0-9]+$/', Rule::unique('productos')->ignore($producto->id)],
             'categoria_id'  => 'required|exists:categorias,id',
             'marca_id'      => 'required|exists:marcas,id',
+            'proveedor_id'  => 'required|exists:proveedores,id', // <-- Validación del proveedor
             'unidad_medida' => 'required|in:Unidad,Kg,Gramos',
             'es_retornable' => 'boolean',
             'precio_costo'  => 'required|numeric|min:0',

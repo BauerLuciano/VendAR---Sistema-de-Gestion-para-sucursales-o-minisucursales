@@ -27,6 +27,10 @@ defineEmits(['cerrar']);
                         <span class="block text-[9px] font-black text-slate-400 uppercase tracking-widest">Marca</span>
                         <span class="text-xs font-bold text-slate-700 uppercase">{{ producto.marca?.nombreMarca }}</span>
                     </div>
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 col-span-2">
+                        <span class="block text-[9px] font-black text-slate-400 uppercase tracking-widest">Proveedor Principal</span>
+                        <span class="text-xs font-bold text-indigo-700 uppercase">{{ producto.proveedor?.razon_social || 'Sin Proveedor' }}</span>
+                    </div>
                     <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
                         <span class="block text-[9px] font-black text-slate-400 uppercase tracking-widest">Presentación</span>
                         <span class="text-xs font-bold text-sky-700 uppercase">{{ producto.unidad_medida }}</span>
