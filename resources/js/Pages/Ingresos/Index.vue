@@ -2,8 +2,9 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import DetalleIngreso from './Componentes/DetalleIngreso.vue';
 import ModalIngreso from './Componentes/ModalIngreso.vue';
-import { Head } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { Head, usePage } from '@inertiajs/vue3'; // Importamos usePage
+import { ref, onMounted } from 'vue'; // Importamos onMounted
+import Swal from 'sweetalert2'; // Importamos SweetAlert2
 
 const props = defineProps({ 
     ingresos: Array,
@@ -12,6 +13,7 @@ const props = defineProps({
     sucursales: Array
 });
 
+const page = usePage();
 const verDetalle = ref(false);
 const verModal = ref(false);
 const seleccionado = ref(null);
@@ -24,6 +26,69 @@ const abrirDetalle = (ingreso) => {
 const abrirNuevo = () => {
     verModal.value = true;
 };
+
+// --- LÓGICA DE ALERTAS PREMIUM ---
+onMounted(() => {
+    // 1. Alerta de Inflación (Aumentos detectados)
+    if (page.props.flash.alertas_inflacion && page.props.flash.alertas_inflacion.length > 0) {
+        let listaProductos = page.props.flash.alertas_inflacion.map(p => 
+            `<li class="flex justify-between items-center border-b border-slate-100 py-2">
+                <span class="font-bold text-slate-700">${p.producto}</span>
+                <span class="bg-rose-100 text-rose-600 px-2 py-0.5 rounded-lg text-xs font-black">+${p.porcentaje}%</span>
+            </li>`
+        ).join('');
+
+        Swal.fire({
+            title: '<span class="text-2xl font-black text-slate-800">¡Alerta de Aumentos!</span>',
+            html: `
+                <div class="text-left mt-4">
+                    <p class="text-slate-500 text-sm mb-4">Los siguientes productos entraron con un costo mayor al registrado anteriormente:</p>
+                    <ul class="bg-slate-50 p-4 rounded-2xl border border-slate-200 max-h-60 overflow-y-auto">
+                        ${listaProductos}
+                    </ul>
+                    <p class="mt-4 text-[11px] text-slate-400 italic text-center text-balance">
+                        Los costos han sido actualizados automáticamente en tu catálogo de productos.
+                    </p>
+                </div>
+            `,
+            icon: 'warning',
+            confirmButtonColor: '#4f46e5',
+            confirmButtonText: 'Entendido, voy a revisar mis precios',
+            customClass: {
+                popup: 'rounded-3xl',
+                confirmButton: 'rounded-xl font-bold uppercase text-xs tracking-widest py-3 px-6'
+            }
+        });
+    }
+    
+    // 2. Mensaje de Éxito General
+    if (page.props.flash.exito) {
+        Swal.fire({
+            title: '¡Éxito!',
+            text: page.props.flash.exito,
+            icon: 'success',
+            timer: 3000,
+            showConfirmButton: false,
+            timerProgressBar: true,
+            customClass: {
+                popup: 'rounded-3xl'
+            }
+        });
+    }
+
+    // 3. Mensaje de Error (por si algo falla)
+    if (page.props.flash.error) {
+        Swal.fire({
+            title: 'Hubo un problema',
+            text: page.props.flash.error,
+            icon: 'error',
+            confirmButtonColor: '#e11d48',
+            customClass: {
+                popup: 'rounded-3xl'
+            }
+        });
+    }
+});
 </script>
 
 <template>

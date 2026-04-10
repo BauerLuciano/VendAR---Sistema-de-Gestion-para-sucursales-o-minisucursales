@@ -11,7 +11,7 @@ class OrdenCompra extends Model
 
     protected $fillable = [
         'proveedor_id', 'sucursal_id', 'user_id', 'nro_comprobante', 
-        'fecha_emision', 'fecha_entrega_esperada', 'estado', 
+        'fecha_emision', 'fecha_entrega_esperada', 'estado','token_cotizacion', 
         'total_estimado', 'observaciones'
     ];
 

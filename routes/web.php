@@ -170,10 +170,15 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global'])->group(funct
     Route::resource('ordenes-compra', OrdenCompraController::class)->except(['create', 'show', 'edit', 'update']);
     Route::post('/ordenes-compra/sugerencias', [OrdenCompraController::class, 'generarSugerencias'])->name('ordenes-compra.sugerencias');
     Route::patch('/ordenes-compra/{ordenCompra}/estado', [OrdenCompraController::class, 'cambiarEstado'])->name('ordenes-compra.estado');
-
+    Route::post('/ordenes-compra/{ordenCompra}/aprobar', [App\Http\Controllers\OrdenCompraController::class, 'aprobarYRecibir'])->name('ordenes-compra.aprobar');
+    Route::post('/ordenes-compra/{ordenCompra}/confirmar', [OrdenCompraController::class, 'confirmarPedido'])->name('ordenes-compra.confirmar');
+    
     // Reposición
     Route::get('/reposicion', [App\Http\Controllers\ReposicionController::class, 'index'])->name('reposicion.index');
     Route::post('/reposicion/generar', [App\Http\Controllers\ReposicionController::class, 'generarPreOrdenes'])->name('reposicion.generar');
+
+    Route::get('/cotizar/{id}', [App\Http\Controllers\ReposicionController::class, 'verCotizacion'])->name('cotizar.ver');
+    Route::post('/cotizar/{id}', [App\Http\Controllers\ReposicionController::class, 'guardarCotizacion'])->name('cotizar.guardar');
 });
 
 require __DIR__.'/auth.php';

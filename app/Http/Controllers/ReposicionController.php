@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\PreOrdenProveedor;
+use Illuminate\Support\Str;
 
 class ReposicionController extends Controller
 {
@@ -60,16 +61,15 @@ class ReposicionController extends Controller
         DB::beginTransaction();
 
         try {
-            // Agrupamos los productos seleccionados por el PROVEEDOR que eligió el usuario en la tabla
             $porProveedor = collect($request->productos)->groupBy('proveedor_id');
 
             foreach ($porProveedor as $proveedorId => $items) {
-                // Creamos la "Pre-Orden" (Pendiente de Cotización)
                 $orden = OrdenCompra::create([
                     'sucursal_id' => $sucursalId,
                     'proveedor_id' => $proveedorId,
                     'user_id' => $user->id,
-                    'estado' => 'Borrador', // Acá lo dejamos en Borrador hasta que armemos lo del Mail
+                    'estado' => 'Borrador', 
+                    'token_cotizacion' => Str::random(40),
                     'fecha_emision' => now(),
                     'total_estimado' => 0,
                     'observaciones' => 'Solicitud de reposición inteligente.',
@@ -90,17 +90,68 @@ class ReposicionController extends Controller
 
                     $total += $subtotal;
                 }
-				$correoDestino = $orden->proveedor->email ?? 'proveedor@test.com';
+                $correoDestino = $orden->proveedor->email ?? 'proveedor@test.com';
                 Mail::to($correoDestino)->send(new PreOrdenProveedor($orden));
                 $orden->update(['total_estimado' => $total]);
             }
 
             DB::commit();
-            return redirect()->route('ordenes-compra.index')->with('success', '¡Pre-Órdenes generadas exitosamente!');
+            
+            return redirect()->back()->with('success', '¡Pre-Órdenes generadas y correos enviados exitosamente!');
 
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->back()->with('error', 'Hubo un error: ' . $e->getMessage());
         }
+    }
+
+    public function verCotizacion(Request $request, $id)
+    {
+        $orden = OrdenCompra::with(['detalles.producto', 'proveedor', 'sucursal'])->findOrFail($id);
+        if (!$orden->token_cotizacion || $request->token !== $orden->token_cotizacion) {
+            abort(403, 'Este enlace de cotización es inválido, falso o ya caducó.');
+        }
+
+        return Inertia::render('Reposicion/Cotizar', [
+            'orden' => $orden
+        ]);
+    }
+
+    public function guardarCotizacion(Request $request, $id)
+    {
+        $request->validate([
+            'fecha_entrega' => 'required|date',
+            'detalles' => 'required|array',
+            'detalles.*.cantidad_pedida' => 'required|numeric|min:0',
+            'detalles.*.costo_unitario_estimado' => 'required|numeric|min:0',
+        ]);
+
+        $orden = OrdenCompra::findOrFail($id);
+
+        if (!$orden->token_cotizacion || $request->token !== $orden->token_cotizacion) {
+            abort(403, 'Enlace inválido.');
+        }
+
+        $totalEstimado = 0;
+
+        foreach ($request->detalles as $item) {
+            $subtotal = $item['cantidad_pedida'] * $item['costo_unitario_estimado'];
+            
+            OrdenCompraDetalle::where('id', $item['id'])->update([
+                'cantidad_pedida' => $item['cantidad_pedida'],
+                'costo_unitario_estimado' => $item['costo_unitario_estimado'],
+                'subtotal_estimado' => $subtotal
+            ]);
+
+            $totalEstimado += $subtotal;
+        }
+
+        $orden->update([
+            'estado' => 'Cotizada',
+            'total_estimado' => $totalEstimado,
+            'fecha_entrega_esperada' => $request->fecha_entrega,
+        ]);
+
+        return redirect()->back();
     }
 }

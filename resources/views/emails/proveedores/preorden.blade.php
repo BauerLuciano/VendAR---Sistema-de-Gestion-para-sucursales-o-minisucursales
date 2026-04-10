@@ -10,11 +10,9 @@ Por favor, revise los productos solicitados y envíenos su cotización o confirm
 - **Sucursal:** {{ $orden->sucursal->nombre }}
 - **Cantidad de Ítems:** {{ $orden->detalles->count() }}
 
-<x-mail::button :url="url('/reposicion')">
+<x-mail::button :url="url('/cotizar/' . $orden->id . '?token=' . $orden->token_cotizacion)">
 Ver y Cotizar Pedido
 </x-mail::button>
-
-*(Nota: Este botón por ahora te lleva al sistema, luego le pondremos el Link Mágico de cotización).*
 
 Gracias,<br>
 {{ config('app.name') }}
