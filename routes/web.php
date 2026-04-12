@@ -142,6 +142,9 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global|Encargado'])->g
     Route::post('/productos/{producto}', [ProductoController::class, 'update'])->name('productos.update');
     Route::patch('/productos/{producto}/status', [ProductoController::class, 'status'])->name('productos.status');
 
+    Route::post('/productos/{producto}/ajuste-stock', [App\Http\Controllers\ProductoController::class, 'ajustarStock'])->name('productos.ajustar');
+    Route::get('/productos/{producto}/auditoria', [App\Http\Controllers\ProductoController::class, 'auditoria'])->name('productos.auditoria');
+
     // Transferencias
     Route::get('/transferencias-sugeridas', [TransferenciaSugeridaController::class, 'index'])->name('transferencias.index');
     Route::post('/transferencias-sugeridas/{transferencia}/aprobar', [TransferenciaSugeridaController::class, 'aprobar'])->name('transferencias.aprobar');
