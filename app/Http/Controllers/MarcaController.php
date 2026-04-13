@@ -10,10 +10,24 @@ use Inertia\Inertia;
 
 class MarcaController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $search = $request->input('search');
+        $estado = $request->input('estado', 'all');
+
+        $marcas = Marca::when($search, function ($query, $search) {
+                $query->where('nombreMarca', 'LIKE', "%{$search}%");
+            })
+            ->when($estado !== 'all', function ($query) use ($estado) {
+                $query->where('estado', $estado === 'activos' ? true : false);
+            })
+            ->orderBy('id', 'desc')
+            ->paginate(10)
+            ->withQueryString();
+
         return Inertia::render('Marcas/Index', [
-            'marcas' => Marca::orderBy('id', 'desc')->get()
+            'marcas' => $marcas,
+            'filtros' => $request->only(['search', 'estado'])
         ]);
     }
 

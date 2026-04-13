@@ -16,18 +16,38 @@ use Inertia\Inertia;
 
 class VentaController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $sucursalId = auth()->user()->branch_id ?? 1;
+        
+        $search = $request->input('search');
+        $estado = $request->input('estado', 'all');
+        $fecha_desde = $request->input('fecha_desde');
+        $fecha_hasta = $request->input('fecha_hasta');
+
         $ventas = Venta::with(['consumidor', 'turno.cajero', 'turno.caja', 'detalles.producto'])
             ->whereHas('turno.caja', function ($q) use ($sucursalId) {
                 $q->where('sucursal_id', $sucursalId);
             })
+            ->when($search, function ($q, $search) {
+                $q->where('id', 'LIKE', "%{$search}%");
+            })
+            ->when($estado !== 'all', function ($q) use ($estado) {
+                $q->where('estado', $estado);
+            })
+            ->when($fecha_desde, function ($q, $fecha_desde) {
+                $q->whereDate('created_at', '>=', $fecha_desde);
+            })
+            ->when($fecha_hasta, function ($q, $fecha_hasta) {
+                $q->whereDate('created_at', '<=', $fecha_hasta);
+            })
             ->orderBy('created_at', 'desc')
-            ->get(); 
+            ->paginate(10)
+            ->withQueryString();
 
         return Inertia::render('Ventas/Index', [
-            'ventas' => $ventas
+            'ventas' => $ventas,
+            'filtros' => $request->only(['search', 'estado', 'fecha_desde', 'fecha_hasta'])
         ]);
     }
 
@@ -51,12 +71,11 @@ class VentaController extends Controller
             $turno = TurnoCaja::with('caja')->findOrFail($request->turno_caja_id);
             $sucursalId = $turno->caja->sucursal_id;
 
-            // 🛑 VALIDACIÓN DE HIERRO: Verificamos stock antes de procesar nada
             foreach ($request->items as $item) {
                 $stockActual = DB::table('producto_sucursal')
                     ->where('producto_id', $item['id'])
                     ->where('sucursal_id', $sucursalId)
-                    ->lockForUpdate() // Bloqueamos la fila para evitar que otra venta se meta en el medio
+                    ->lockForUpdate() 
                     ->first();
 
                 if (!$stockActual || $stockActual->cantidad_fisica < $item['cantidad']) {
@@ -66,7 +85,6 @@ class VentaController extends Controller
                 }
             }
 
-            // 1. Crear la Venta
             $venta = Venta::create([
                 'turno_caja_id' => $request->turno_caja_id,
                 'consumidor_id' => $request->consumidor_id,
@@ -75,7 +93,6 @@ class VentaController extends Controller
                 'estado'        => 'Completada',
             ]);
 
-            // 2. Lógica de Fiado (Cuenta Corriente)
             if ($request->metodo_pago === 'Cuenta Corriente') {
                 $cuenta = CuentaCorriente::firstOrCreate(
                     ['consumidor_id' => $request->consumidor_id],
@@ -92,7 +109,6 @@ class VentaController extends Controller
                     'descripcion'         => 'Compra en POS',
                 ]);
             } 
-            // 3. Lógica de CAJA
             else {
                 $metodoPagoCaja = strtoupper(str_replace(' ', '_', $request->metodo_pago));
 
@@ -106,7 +122,6 @@ class VentaController extends Controller
                 ]);
             }
 
-            // 4. Procesar Detalle y Descuento de Stock
             foreach ($request->items as $item) {
                 DetalleVenta::create([
                     'venta_id'        => $venta->id,
@@ -116,13 +131,11 @@ class VentaController extends Controller
                     'subtotal'        => $item['cantidad'] * $item['precio_venta'],
                 ]);
 
-                // Descontamos físicamente
                 DB::table('producto_sucursal')
                     ->where('producto_id', $item['id'])
                     ->where('sucursal_id', $sucursalId) 
                     ->decrement('cantidad_fisica', $item['cantidad']);
                 
-                // Registramos auditoría de salida (Opcional, pero recomendado)
                 DB::table('movimientos_stock')->insert([
                     'producto_id' => $item['id'],
                     'sucursal_id' => $sucursalId,
@@ -156,7 +169,6 @@ class VentaController extends Controller
             $venta->load('turno.caja', 'detalles');
             $sucursalId = $venta->turno->caja->sucursal_id;
 
-            // 1. Devolver Stock
             foreach ($venta->detalles as $detalle) {
                 DB::table('producto_sucursal')
                     ->where('sucursal_id', $sucursalId)
@@ -164,7 +176,6 @@ class VentaController extends Controller
                     ->increment('cantidad_fisica', $detalle->cantidad);
             }
 
-            // 2. Ajustar dinero
             if ($venta->metodo_pago === 'Cuenta Corriente' && $venta->consumidor_id) {
                 $cuenta = CuentaCorriente::where('consumidor_id', $venta->consumidor_id)->first();
                 if ($cuenta) {

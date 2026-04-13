@@ -12,10 +12,38 @@ use Illuminate\Support\Facades\DB;
 
 class ConsumidorController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $search = $request->input('search');
+        $estado = $request->input('estado', 'all');
+        $deuda = $request->input('deuda', 'all');
+
+        $query = Consumidor::with('cuentaCorriente');
+
+        $query->when($search, function ($q, $search) {
+            $q->where(function ($sub) use ($search) {
+                $sub->where('nombre', 'LIKE', "%{$search}%")
+                    ->orWhere('apellido', 'LIKE', "%{$search}%")
+                    ->orWhere('documento', 'LIKE', "%{$search}%")
+                    ->orWhere('id', 'LIKE', "%{$search}%");
+            });
+        });
+
+        $query->when($estado !== 'all', function ($q) use ($estado) {
+            $q->where('estado', $estado === 'activos' ? true : false);
+        });
+
+        $query->when($deuda === 'con_deuda', function ($q) {
+            $q->whereHas('cuentaCorriente', function ($sub) {
+                $sub->where('saldo_deudor', '>', 0);
+            });
+        });
+
+        $consumidores = $query->orderBy('id', 'desc')->paginate(10)->withQueryString();
+
         return Inertia::render('Consumidores/Index', [
-            'consumidores' => Consumidor::with('cuentaCorriente')->orderBy('id', 'desc')->get()
+            'consumidores' => $consumidores,
+            'filtros' => $request->only(['search', 'estado', 'deuda'])
         ]);
     }
 
@@ -65,9 +93,12 @@ class ConsumidorController extends Controller
         return redirect()->back()->with('success', 'Datos del cliente actualizados.');
     }
 
-    // ========================================================
-    // NUEVO: MÉTODO PARA COBRAR DEUDA E IMPACTAR EN CAJA
-    // ========================================================
+    public function status(Consumidor $consumidor)
+    {
+        $consumidor->update(['estado' => !$consumidor->estado]);
+        return redirect()->back()->with('success', 'Estado del cliente modificado.');
+    }
+
     public function cobrarDeuda(Request $request, Consumidor $consumidor)
     {
         $request->validate([
@@ -77,7 +108,6 @@ class ConsumidorController extends Controller
 
         $cuenta = $consumidor->cuentaCorriente;
 
-        // Validamos que exista la cuenta y que el monto a cobrar no sea mayor a la deuda
         if (!$cuenta || $cuenta->saldo_deudor < $request->monto) {
             return back()->withErrors(['monto' => 'El monto ingresado es mayor a la deuda actual del cliente.']);
         }
@@ -85,18 +115,15 @@ class ConsumidorController extends Controller
         DB::beginTransaction();
 
         try {
-            // 1. Descontamos el dinero de la deuda del cliente
             $cuenta->saldo_deudor -= $request->monto;
             $cuenta->fecha_ultimo_movimiento = now();
             $cuenta->save();
 
-            // 2. Buscamos si el usuario actual tiene una caja abierta
             $user = auth()->user();
             $turno = TurnoCaja::where('user_id', $user->id)
                         ->where('estado', 'Abierto')
                         ->first();
 
-            // 3. Si tiene caja abierta, inyectamos el movimiento de ingreso de plata
             if ($turno) {
                 MovimientoCaja::create([
                     'turno_caja_id' => $turno->id,

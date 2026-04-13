@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-// --- 1. IMPORTACIONES ---
 use App\Models\OrdenCompra;
 use App\Models\OrdenCompraDetalle;
 use App\Models\Sucursal;
@@ -14,14 +13,20 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Mail;
-use App\Mail\OrdenConfirmadaProveedor; // Asegurate de crear este Mailable
+use App\Mail\OrdenConfirmadaProveedor; 
 
 class OrdenCompraController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $user = auth()->user();
         $esJefe = $user->hasRole(['SuperAdmin', 'Administrador Global']);
+        
+        $search = $request->input('search');
+        $estado = $request->input('estado', 'all');
+        $proveedor_id = $request->input('proveedor_id', 'all');
+        $fecha_desde = $request->input('fecha_desde');
+        $fecha_hasta = $request->input('fecha_hasta');
 
         $query = OrdenCompra::with(['proveedor', 'sucursal', 'usuario', 'detalles.producto']);
 
@@ -29,14 +34,33 @@ class OrdenCompraController extends Controller
             $query->where('sucursal_id', $user->branch_id);
         }
 
-        $ordenes = $query->orderBy('id', 'desc')->get();
+        $ordenes = $query->when($search, function ($q, $search) {
+                $q->where('id', 'LIKE', "%{$search}%");
+            })
+            ->when($estado !== 'all', function ($q) use ($estado) {
+                $q->where('estado', $estado);
+            })
+            ->when($proveedor_id !== 'all', function ($q) use ($proveedor_id) {
+                $q->where('proveedor_id', $proveedor_id);
+            })
+            ->when($fecha_desde, function ($q, $fecha_desde) {
+                $q->whereDate('fecha_emision', '>=', $fecha_desde);
+            })
+            ->when($fecha_hasta, function ($q, $fecha_hasta) {
+                $q->whereDate('fecha_emision', '<=', $fecha_hasta);
+            })
+            ->orderBy('id', 'desc')
+            ->paginate(10)
+            ->withQueryString();
+
         $proveedores = Proveedor::where('estado', true)->get();
         $sucursales = $esJefe ? Sucursal::all() : Sucursal::where('id', $user->branch_id)->get();
 
         return Inertia::render('OrdenesCompra/Index', [
             'ordenes' => $ordenes,
             'proveedores' => $proveedores,
-            'sucursales' => $sucursales
+            'sucursales' => $sucursales,
+            'filtros' => $request->only(['search', 'estado', 'proveedor_id', 'fecha_desde', 'fecha_hasta'])
         ]);
     }
 
@@ -96,9 +120,6 @@ class OrdenCompraController extends Controller
         }
     }
 
-    /**
-     * PASO INTERMEDIO: Aceptar cotización y avisar al proveedor
-     */
     public function confirmarPedido(OrdenCompra $ordenCompra)
     {
         if ($ordenCompra->estado !== 'Cotizada') {
@@ -107,89 +128,75 @@ class OrdenCompraController extends Controller
 
         $ordenCompra->update(['estado' => 'Aprobada']);
 
-        // Enviar Email al proveedor
         $correoDestino = $ordenCompra->proveedor->email ?? 'proveedor@test.com';
         Mail::to($correoDestino)->send(new OrdenConfirmadaProveedor($ordenCompra));
 
         return redirect()->back()->with('exito', '¡Pedido confirmado! Se le envió un correo al proveedor.');
     }
 
-    /**
-     * PASO FINAL: Registrar ingreso real de mercadería y sumar stock
-     */
     public function aprobarYRecibir(OrdenCompra $ordenCompra)
-{
-    if ($ordenCompra->estado !== 'Aprobada') {
-        return redirect()->back()->with('error', 'Primero debes confirmar el pedido al proveedor.');
-    }
-
-    DB::beginTransaction();
-    try {
-        $ordenCompra->load('detalles.producto');
-
-        // 1. Crear el Ingreso histórico (Remito)
-        $ingreso = IngresoMercaderia::create([
-            'sucursal_id'  => $ordenCompra->sucursal_id,
-            'proveedor_id' => $ordenCompra->proveedor_id,
-            'user_id'      => auth()->id(),
-            'fecha_ingreso' => now(),
-            'numero_remito' => 'AUTO-OC-' . str_pad($ordenCompra->id, 4, '0', STR_PAD_LEFT),
-            'total_costo'   => $ordenCompra->total_estimado,
-        ]);
-
-        $alertasInflacion = [];
-
-        foreach ($ordenCompra->detalles as $detalle) {
-            // A. Registrar detalle del ingreso
-            IngresoDetalle::create([
-                'ingreso_mercaderia_id' => $ingreso->id,
-                'producto_id'           => $detalle->producto_id,
-                'cantidad_recibida'     => $detalle->cantidad_pedida,
-                'costo_unitario'        => $detalle->costo_unitario_estimado,
-            ]);
-
-            $producto = $detalle->producto;
-            $precioAnterior = $producto->precio_costo;
-            $nuevoPrecio = $detalle->costo_unitario_estimado;
-
-            // B. LÓGICA DE ACTUALIZACIÓN DE PRECIO (El corazón del cambio)
-            // Si el precio es distinto (o si es el primer ingreso y estaba en 0)
-            if ($nuevoPrecio != $precioAnterior) {
-                
-                // Si hubo aumento, lo metemos en la bolsa de alertas para avisarte
-                if ($nuevoPrecio > $precioAnterior && $precioAnterior > 0) {
-                    $alertasInflacion[] = [
-                        'producto' => $producto->nombre,
-                        'costo_viejo' => $precioAnterior,
-                        'costo_nuevo' => $nuevoPrecio,
-                        'porcentaje' => number_format((($nuevoPrecio - $precioAnterior) / $precioAnterior) * 100, 2)
-                    ];
-                }
-
-                // ACTUALIZAMOS EL COSTO DEL PRODUCTO SIEMPRE
-                $producto->update(['precio_costo' => $nuevoPrecio]);
-            }
-
-            // C. Actualización de Stock Físico
-            $producto->sucursales()->updateExistingPivot($ordenCompra->sucursal_id, [
-                'cantidad_fisica' => DB::raw("cantidad_fisica + {$detalle->cantidad_pedida}")
-            ]);
+    {
+        if ($ordenCompra->estado !== 'Aprobada') {
+            return redirect()->back()->with('error', 'Primero debes confirmar el pedido al proveedor.');
         }
 
-        $ordenCompra->update(['estado' => 'Recepcionada']);
-        DB::commit();
+        DB::beginTransaction();
+        try {
+            $ordenCompra->load('detalles.producto');
 
-        // Mandamos los datos a la sesión para que SweetAlert los use
-        return redirect()->route('ingresos.index')->with([
-            'exito' => 'Mercadería recibida. Precios y Stock actualizados.',
-            'alertas_inflacion' => $alertasInflacion
-        ]);
+            $ingreso = IngresoMercaderia::create([
+                'sucursal_id'  => $ordenCompra->sucursal_id,
+                'proveedor_id' => $ordenCompra->proveedor_id,
+                'user_id'      => auth()->id(),
+                'fecha_ingreso' => now(),
+                'numero_remito' => 'AUTO-OC-' . str_pad($ordenCompra->id, 4, '0', STR_PAD_LEFT),
+                'total_costo'   => $ordenCompra->total_estimado,
+            ]);
 
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+            $alertasInflacion = [];
+
+            foreach ($ordenCompra->detalles as $detalle) {
+                IngresoDetalle::create([
+                    'ingreso_mercaderia_id' => $ingreso->id,
+                    'producto_id'           => $detalle->producto_id,
+                    'cantidad_recibida'     => $detalle->cantidad_pedida,
+                    'costo_unitario'        => $detalle->costo_unitario_estimado,
+                ]);
+
+                $producto = $detalle->producto;
+                $precioAnterior = $producto->precio_costo;
+                $nuevoPrecio = $detalle->costo_unitario_estimado;
+
+                if ($nuevoPrecio != $precioAnterior) {
+                    if ($nuevoPrecio > $precioAnterior && $precioAnterior > 0) {
+                        $alertasInflacion[] = [
+                            'producto' => $producto->nombre,
+                            'costo_viejo' => $precioAnterior,
+                            'costo_nuevo' => $nuevoPrecio,
+                            'porcentaje' => number_format((($nuevoPrecio - $precioAnterior) / $precioAnterior) * 100, 2)
+                        ];
+                    }
+                    $producto->update(['precio_costo' => $nuevoPrecio]);
+                }
+
+                $producto->sucursales()->updateExistingPivot($ordenCompra->sucursal_id, [
+                    'cantidad_fisica' => DB::raw("cantidad_fisica + {$detalle->cantidad_pedida}")
+                ]);
+            }
+
+            $ordenCompra->update(['estado' => 'Recepcionada']);
+            DB::commit();
+
+            return redirect()->route('ingresos.index')->with([
+                'exito' => 'Mercadería recibida. Precios y Stock actualizados.',
+                'alertas_inflacion' => $alertasInflacion
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+        }
     }
-}
 
     public function cambiarEstado(Request $request, OrdenCompra $ordenCompra)
     {

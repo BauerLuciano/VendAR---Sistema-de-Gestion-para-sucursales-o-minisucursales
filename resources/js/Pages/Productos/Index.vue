@@ -139,6 +139,11 @@ const abrirAuditoria = async (p) => {
     }
 };
 
+const formatearCantidad = (cantidad) => {
+    if (!cantidad) return '0';
+    return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 3 }).format(parseFloat(cantidad));
+};
+
 const abrirNuevo = () => { seleccionado.value = null; verModal.value = true; };
 const abrirEditar = (p) => { seleccionado.value = p; cerrarMenu(); verModal.value = true; };
 const abrirDetalle = (p) => { seleccionado.value = p; cerrarMenu(); verDetalle.value = true; };
@@ -350,7 +355,9 @@ const toggleEstado = (p) => {
                                                     ? 'text-red-700 bg-red-50 border-red-200'
                                                     : 'text-emerald-700 bg-emerald-50 border-emerald-200'"
                                                 class="px-3 py-1 rounded-lg text-xs font-bold border tabular-nums">
-                                                {{ Number(calcularTotalStock(p)).toFixed(p.unidad_medida === 'Kg' ? 3 : 0) }}
+                                                
+                                                {{ formatearCantidad(calcularTotalStock(p)) }}
+                                                
                                             </span>
                                             <span class="text-[9px] text-slate-400 uppercase tracking-widest font-medium">{{ p.unidad_medida }}</span>
                                         </div>

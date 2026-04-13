@@ -10,10 +10,24 @@ use Illuminate\Validation\Rule;
 
 class CategoriaController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $search = $request->input('search');
+        $estado = $request->input('estado', 'all');
+
+        $categorias = Categoria::when($search, function ($query, $search) {
+                $query->where('nombreCategoria', 'LIKE', "%{$search}%");
+            })
+            ->when($estado !== 'all', function ($query) use ($estado) {
+                $query->where('estado', $estado === 'activos' ? true : false);
+            })
+            ->orderBy('id', 'desc')
+            ->paginate(10)
+            ->withQueryString();
+
         return Inertia::render('Categorias/Index', [
-            'categorias' => Categoria::orderBy('id', 'desc')->get()
+            'categorias' => $categorias,
+            'filtros' => $request->only(['search', 'estado'])
         ]);
     }
 
@@ -21,7 +35,7 @@ class CategoriaController extends Controller
     {
         $validados = $request->validate([
             'nombreCategoria' => 'required|string|max:100|unique:categorias,nombreCategoria',
-            'descripcion'     => 'nullable|string|max:500', // ¡Faltaba esto!
+            'descripcion'     => 'nullable|string|max:500',
         ]);
 
         $validados['slug'] = Str::slug($request->nombreCategoria);

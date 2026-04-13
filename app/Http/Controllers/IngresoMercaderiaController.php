@@ -13,18 +13,41 @@ use Inertia\Inertia;
 
 class IngresoMercaderiaController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $search = $request->input('search');
+        $proveedor_id = $request->input('proveedor_id', 'all');
+        $sucursal_id = $request->input('sucursal_id', 'all');
+        $fecha_desde = $request->input('fecha_desde');
+        $fecha_hasta = $request->input('fecha_hasta');
+
+        $ingresos = IngresoMercaderia::with(['proveedor', 'sucursal', 'detalles.producto', 'usuario'])
+            ->when($search, function ($q, $search) {
+                $q->where('numero_remito', 'LIKE', "%{$search}%");
+            })
+            ->when($proveedor_id !== 'all', function ($q) use ($proveedor_id) {
+                $q->where('proveedor_id', $proveedor_id);
+            })
+            ->when($sucursal_id !== 'all', function ($q) use ($sucursal_id) {
+                $q->where('sucursal_id', $sucursal_id);
+            })
+            ->when($fecha_desde, function ($q, $fecha_desde) {
+                $q->whereDate('fecha_ingreso', '>=', $fecha_desde);
+            })
+            ->when($fecha_hasta, function ($q, $fecha_hasta) {
+                $q->whereDate('fecha_ingreso', '<=', $fecha_hasta);
+            })
+            ->orderBy('fecha_ingreso', 'desc')
+            ->orderBy('id', 'desc')
+            ->paginate(10)
+            ->withQueryString();
+
         return Inertia::render('Ingresos/Index', [
-            // Para la tabla (Historial)
-            'ingresos' => IngresoMercaderia::with(['proveedor', 'sucursal', 'detalles.producto','usuario'])
-                ->orderBy('fecha_ingreso', 'desc')
-                ->orderBy('id', 'desc')
-                ->get(),
-            // Para el Modal de carga
+            'ingresos' => $ingresos,
             'productos' => Producto::where('estado', true)->get(),
             'proveedores' => Proveedor::where('estado', true)->get(),
             'sucursales' => Sucursal::where('estado', true)->get(),
+            'filtros' => $request->only(['search', 'proveedor_id', 'sucursal_id', 'fecha_desde', 'fecha_hasta'])
         ]);
     }
 
@@ -53,7 +76,6 @@ class IngresoMercaderiaController extends Controller
             ]);
 
             foreach ($request->items as $item) {
-                // 1. Guardar el detalle del ingreso
                 IngresoDetalle::create([
                     'ingreso_mercaderia_id' => $ingreso->id,
                     'producto_id' => $item['producto_id'],
@@ -61,7 +83,6 @@ class IngresoMercaderiaController extends Controller
                     'costo_unitario' => $item['costo'],
                 ]);
 
-                // 2. Revisar si hay inflación
                 $producto = Producto::find($item['producto_id']);
                 if ($item['costo'] > $producto->precio_costo) {
                     $alertasInflacion[] = [
@@ -72,17 +93,14 @@ class IngresoMercaderiaController extends Controller
                     $producto->update(['precio_costo' => $item['costo']]);
                 }
 
-                // 3. ACTUALIZACIÓN DE STOCK (EL FIX ESTÁ ACÁ)
                 $pivot = $producto->sucursales()->where('sucursal_id', $request->sucursal_id)->first();
                 
                 if ($pivot) {
-                    // El producto ya estaba en la sucursal, le sumamos el stock
                     $nuevaCantidad = $pivot->pivot->cantidad_fisica + $item['cantidad'];
                     $producto->sucursales()->updateExistingPivot($request->sucursal_id, [
                         'cantidad_fisica' => $nuevaCantidad
                     ]);
                 } else {
-                    // Es la primera vez que entra este producto a esta sucursal
                     $producto->sucursales()->attach($request->sucursal_id, [
                         'cantidad_fisica' => $item['cantidad'],
                         'cantidad_reservada' => 0

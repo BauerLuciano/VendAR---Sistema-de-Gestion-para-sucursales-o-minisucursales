@@ -9,10 +9,28 @@ use Illuminate\Validation\Rule;
 
 class ProveedorController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $search = $request->input('search');
+        $estado = $request->input('estado', 'all');
+
+        $proveedores = Proveedor::when($search, function ($q, $search) {
+                $q->where(function ($sub) use ($search) {
+                    $sub->where('razon_social', 'LIKE', "%{$search}%")
+                        ->orWhere('cuit', 'LIKE', "%{$search}%")
+                        ->orWhere('id', 'LIKE', "%{$search}%");
+                });
+            })
+            ->when($estado !== 'all', function ($q) use ($estado) {
+                $q->where('estado', $estado === 'activos' ? true : false);
+            })
+            ->orderBy('id', 'desc')
+            ->paginate(10)
+            ->withQueryString();
+
         return Inertia::render('Proveedores/Index', [
-            'proveedores' => Proveedor::orderBy('id', 'desc')->get()
+            'proveedores' => $proveedores,
+            'filtros' => $request->only(['search', 'estado'])
         ]);
     }
 
@@ -32,7 +50,7 @@ class ProveedorController extends Controller
         return redirect()->back()->with('success', 'Proveedor registrado.');
     }
 
-    public function update(Request $request, Proveedor $proveedore) // Laravel pluraliza raro a veces, usamos $proveedore
+    public function update(Request $request, Proveedor $proveedore)
     {
         $validados = $request->validate([
             'razon_social' => 'required|string|max:255',

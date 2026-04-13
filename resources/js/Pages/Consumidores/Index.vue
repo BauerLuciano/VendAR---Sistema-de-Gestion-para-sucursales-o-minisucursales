@@ -1,23 +1,47 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
-import Swal from 'sweetalert2'; // Agregamos SweetAlert para los mensajitos
+import { Head, useForm, router } from '@inertiajs/vue3';
+import { ref, watch, reactive } from 'vue';
+import Swal from 'sweetalert2';
 
 const props = defineProps({
-    consumidores: Array
+    consumidores: Object,
+    filtros: Object
 });
 
-// Estado del Modal de Edición/Creación
 const isModalOpen = ref(false);
 const isEditing = ref(false);
 const currentId = ref(null);
 
-// Estado del Modal de Cobro
 const isCobroModalOpen = ref(false);
 const clienteSeleccionado = ref(null);
 
-// Formulario de Cliente
+const menuAbierto = ref(null);
+
+const formFiltros = reactive({
+    search: props.filtros?.search || '',
+    estado: props.filtros?.estado || 'all',
+    deuda: props.filtros?.deuda || 'all'
+});
+
+let timeout = null;
+
+watch(formFiltros, (value) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+        router.get(route('consumidores.index'), value, {
+            preserveState: true,
+            replace: true
+        });
+    }, 300);
+});
+
+const limpiarFiltros = () => {
+    formFiltros.search = '';
+    formFiltros.estado = 'all';
+    formFiltros.deuda = 'all';
+};
+
 const form = useForm({
     nombre: '',
     apellido: '',
@@ -29,14 +53,21 @@ const form = useForm({
     estado: true,
 });
 
-// Formulario de Cobro
 const formCobro = useForm({
     monto: '',
     metodo_pago: 'EFECTIVO'
 });
 
-// === MÉTODOS PARA CREAR/EDITAR ===
+const toggleMenu = (id) => {
+    menuAbierto.value = menuAbierto.value === id ? null : id;
+};
+
+const cerrarMenu = () => {
+    menuAbierto.value = null;
+};
+
 const openModal = (cliente = null) => {
+    cerrarMenu();
     form.clearErrors();
     if (cliente) {
         isEditing.value = true;
@@ -82,11 +113,10 @@ const submitForm = () => {
     }
 };
 
-// === MÉTODOS PARA COBRAR ===
 const openCobroModal = (cliente) => {
+    cerrarMenu();
     clienteSeleccionado.value = cliente;
     formCobro.reset();
-    // Sugerimos por defecto que pague toda la deuda, pero puede editarlo
     formCobro.monto = cliente.cuenta_corriente?.saldo_deudor || 0;
     isCobroModalOpen.value = true;
 };
@@ -116,7 +146,32 @@ const submitCobro = () => {
     });
 };
 
-// === UTILIDADES ===
+const toggleEstado = (c) => {
+    cerrarMenu();
+    const accion = c.estado ? 'desactivar' : 'activar';
+    const resultado = c.estado ? 'desactivado' : 'activado';
+    const colorConfirm = c.estado ? '#ef4444' : '#10b981';
+
+    Swal.fire({
+        title: `¿${accion.toUpperCase()} cliente?`,
+        text: `El cliente "${c.nombre} ${c.apellido}" cambiará su estado a ${resultado}.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: colorConfirm,
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: `Sí, ${accion}`,
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            router.patch(route('consumidores.status', c.id), {}, {
+                onSuccess: () => {
+                    Swal.fire({ title: '¡Listo!', text: `Cliente ${resultado}.`, icon: 'success', confirmButtonColor: '#0284c7' });
+                }
+            });
+        }
+    });
+};
+
 const formatearDinero = (monto) => {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(monto || 0);
 };
@@ -130,40 +185,77 @@ const calcularDisponible = (limite, deuda) => {
     <Head title="Clientes" />
 
     <AuthenticatedLayout>
+        <div v-if="menuAbierto" @click="cerrarMenu" class="fixed inset-0 z-30"></div>
+
         <div class="py-6 px-4 sm:px-6 lg:px-8 bg-slate-50 min-h-screen">
-            <div class="flex justify-between items-end mb-8">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 gap-4">
                 <div>
                     <h1 class="text-2xl font-black text-slate-800 uppercase tracking-tight">Directorio de Clientes</h1>
                     <div class="h-1 w-12 bg-sky-500 mt-1"></div>
                 </div>
                 <button 
                     @click="openModal()"
-                    class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2.5 px-5 rounded-xl shadow-sm shadow-sky-600/30 transition-all flex items-center gap-2"
+                    class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2.5 px-5 rounded-xl shadow-sm shadow-sky-600/30 transition-all flex items-center justify-center gap-2 w-full sm:w-auto"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" /></svg>
                     Nuevo Cliente
                 </button>
             </div>
 
-            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="overflow-x-auto">
+            <div class="mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-4">
+                <div class="flex flex-col sm:flex-row gap-4 w-full">
+                    <div class="relative w-full sm:w-1/2">
+                        <input 
+                            v-model="formFiltros.search" 
+                            type="text" 
+                            placeholder="Buscar por Nombre, DNI o ID..." 
+                            class="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:ring-sky-500 focus:border-sky-500 transition-all font-medium text-sm"
+                        >
+                        <svg class="w-5 h-5 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                    
+                    <div class="w-full sm:w-1/4">
+                        <select v-model="formFiltros.estado" class="w-full border border-slate-200 rounded-xl py-2.5 px-4 focus:ring-sky-500 focus:border-sky-500 text-slate-600 bg-slate-50 cursor-pointer font-medium text-sm">
+                            <option value="all">Todos los estados</option>
+                            <option value="activos">Solo Activos</option>
+                            <option value="inactivos">Solo Inactivos</option>
+                        </select>
+                    </div>
+
+                    <div class="w-full sm:w-1/4">
+                        <select v-model="formFiltros.deuda" class="w-full border border-slate-200 rounded-xl py-2.5 px-4 focus:ring-sky-500 focus:border-sky-500 text-slate-600 bg-slate-50 cursor-pointer font-medium text-sm">
+                            <option value="all">Todos (Con y sin deuda)</option>
+                            <option value="con_deuda">Solo con Deuda Activa</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex justify-end">
+                    <button v-if="formFiltros.search || formFiltros.estado !== 'all' || formFiltros.deuda !== 'all'" @click="limpiarFiltros" class="text-sm text-slate-500 hover:text-rose-500 font-bold px-4 transition-colors">
+                        Limpiar Filtros
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4">
+                <div class="overflow-visible">
                     <table class="w-full text-left border-collapse">
                         <thead>
                             <tr class="bg-slate-50 border-b border-slate-100 text-xs uppercase tracking-widest text-slate-400">
-                                <th class="p-4 font-black">ID</th>
+                                <th class="p-4 font-black rounded-l-xl">ID</th>
                                 <th class="p-4 font-black">Cliente</th>
                                 <th class="p-4 font-black">Contacto</th>
                                 <th class="p-4 font-black text-right">Límite Cta. Cte.</th>
                                 <th class="p-4 font-black text-right">Deuda Actual</th>
                                 <th class="p-4 font-black text-right">Disponible</th>
-                                <th class="p-4 font-black text-center">Acciones</th>
+                                <th class="p-4 font-black text-center rounded-r-xl">Acciones</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
-                            <tr v-if="consumidores.length === 0">
-                                <td colspan="7" class="p-8 text-center text-slate-400 font-bold">No hay clientes registrados.</td>
+                            <tr v-if="consumidores.data.length === 0">
+                                <td colspan="7" class="p-8 text-center text-slate-400 font-bold">No se encontraron clientes con esos filtros.</td>
                             </tr>
-                            <tr v-for="cliente in consumidores" :key="cliente.id" class="hover:bg-slate-50/50 transition-colors group" :class="{'opacity-50': !cliente.estado}">
+                            <tr v-for="cliente in consumidores.data" :key="cliente.id" class="hover:bg-slate-50/50 transition-colors group" :class="{'opacity-50 grayscale bg-slate-50': !cliente.estado}">
                                 <td class="p-4 font-bold text-slate-400">#{{ cliente.id }}</td>
                                 <td class="p-4">
                                     <div class="font-bold text-slate-800">{{ cliente.nombre }} {{ cliente.apellido }}</div>
@@ -191,25 +283,58 @@ const calcularDisponible = (limite, deuda) => {
                                     {{ formatearDinero(calcularDisponible(cliente.limite_cuenta_corriente, cliente.cuenta_corriente?.saldo_deudor)) }}
                                 </td>
 
-                                <td class="p-4 text-center">
-                                    <div class="flex justify-center items-center gap-2">
-                                        <button @click="openModal(cliente)" class="text-slate-400 hover:text-sky-500 transition-colors p-2" title="Editar">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                        </button>
+                                <td class="p-4 text-center relative">
+                                    <button @click.stop="toggleMenu(cliente.id)" class="p-2 rounded-full text-slate-400 hover:text-sky-600 hover:bg-sky-100 transition-colors focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+                                    </button>
+
+                                    <div v-if="menuAbierto === cliente.id" class="absolute right-10 top-10 w-48 bg-white rounded-xl shadow-2xl border border-slate-100 z-40 py-2 animate-in fade-in zoom-in-95 duration-150">
                                         
-                                        <button 
-                                            v-if="cliente.cuenta_corriente?.saldo_deudor > 0"
-                                            @click="openCobroModal(cliente)" 
-                                            class="bg-emerald-100 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-colors p-2 rounded-lg" 
-                                            title="Cobrar Deuda"
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        <button v-if="cliente.cuenta_corriente?.saldo_deudor > 0" @click="openCobroModal(cliente)" class="w-full text-left px-4 py-2.5 text-xs font-bold text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 transition-colors">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                            Cobrar Deuda
+                                        </button>
+
+                                        <button @click="openModal(cliente)" class="w-full text-left px-4 py-2.5 text-xs font-bold text-sky-600 hover:bg-sky-50 flex items-center gap-3 transition-colors">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                            Editar Datos
+                                        </button>
+
+                                        <div class="border-t border-slate-100 my-1"></div>
+
+                                        <button @click="toggleEstado(cliente)" 
+                                            class="w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-3 transition-colors"
+                                            :class="cliente.estado ? 'text-rose-600 hover:bg-rose-50' : 'text-emerald-600 hover:bg-emerald-50'">
+                                            <svg v-if="cliente.estado" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                                            <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                            {{ cliente.estado ? 'Dar de Baja' : 'Activar Cliente' }}
                                         </button>
                                     </div>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <div v-if="consumidores.links && consumidores.data.length > 0" class="p-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <span class="text-sm text-slate-500 font-medium">
+                        Mostrando {{ consumidores.from }} a {{ consumidores.to }} de {{ consumidores.total }} clientes
+                    </span>
+                    <div class="flex flex-wrap justify-center gap-1">
+                        <component
+                            :is="link.url ? 'a' : 'span'"
+                            v-for="(link, index) in consumidores.links"
+                            :key="index"
+                            :href="link.url"
+                            @click.prevent="link.url ? router.get(link.url, formFiltros, { preserveState: true }) : null"
+                            v-html="link.label"
+                            class="px-3 py-1.5 text-sm rounded-lg transition-colors border"
+                            :class="[
+                                link.active ? 'bg-sky-600 text-white font-bold border-sky-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100',
+                                !link.url ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'cursor-pointer'
+                            ]"
+                        />
+                    </div>
                 </div>
             </div>
         </div>

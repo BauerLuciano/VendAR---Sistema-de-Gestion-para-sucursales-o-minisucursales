@@ -1,31 +1,66 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, watch, reactive } from 'vue';
 import { router, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import Swal from 'sweetalert2'; // Importamos SweetAlert2
+import Swal from 'sweetalert2'; 
 
 const props = defineProps({
-    ordenes: Array,
+    ordenes: Object,
     proveedores: Array,
     sucursales: Array,
+    filtros: Object
 });
 
-// Estado para el Modal de Detalles
+const menuAbierto = ref(null);
+
+const formFiltros = reactive({
+    search: props.filtros?.search || '',
+    estado: props.filtros?.estado || 'all',
+    proveedor_id: props.filtros?.proveedor_id || 'all',
+    fecha_desde: props.filtros?.fecha_desde || '',
+    fecha_hasta: props.filtros?.fecha_hasta || ''
+});
+
+let timeout = null;
+
+watch(formFiltros, (value) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+        router.get(route('ordenes-compra.index'), value, {
+            preserveState: true,
+            replace: true
+        });
+    }, 300);
+});
+
+const limpiarFiltros = () => {
+    formFiltros.search = '';
+    formFiltros.estado = 'all';
+    formFiltros.proveedor_id = 'all';
+    formFiltros.fecha_desde = '';
+    formFiltros.fecha_hasta = '';
+};
+
 const showModal = ref(false);
 const ordenSeleccionada = ref(null);
 
-// Función para formatear plata
+const toggleMenu = (id) => {
+    menuAbierto.value = menuAbierto.value === id ? null : id;
+};
+
+const cerrarMenu = () => {
+    menuAbierto.value = null;
+};
+
 const formatearDinero = (monto) => {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(monto);
 };
 
-// Función para formatear fecha
 const formatearFecha = (fecha) => {
     if (!fecha) return '-';
     return new Date(fecha).toLocaleDateString('es-AR');
 };
 
-// Acciones principales
 const generarSugerencias = () => {
     Swal.fire({
         title: '¿Generar sugerencias?',
@@ -42,7 +77,6 @@ const generarSugerencias = () => {
     });
 };
 
-// --- PASO 1: ACEPTAR COTIZACIÓN (Cambia a Aprobada) ---
 const aceptarCotizacion = (orden) => {
     Swal.fire({
         title: '¿Aceptar esta cotización?',
@@ -65,7 +99,6 @@ const aceptarCotizacion = (orden) => {
     });
 };
 
-// --- PASO 2: RECIBIR MERCADERÍA (Suma Stock y genera Remito) ---
 const registrarRecepcion = (orden) => {
     Swal.fire({
         title: '¿Llegó la mercadería?',
@@ -86,6 +119,7 @@ const registrarRecepcion = (orden) => {
 };
 
 const eliminarOrden = (orden) => {
+    cerrarMenu();
     Swal.fire({
         title: '¿Eliminar orden?',
         text: "Esta acción no se puede deshacer.",
@@ -100,8 +134,8 @@ const eliminarOrden = (orden) => {
     });
 };
 
-// Manejo del Modal
 const abrirDetalles = (orden) => {
+    cerrarMenu();
     ordenSeleccionada.value = orden;
     showModal.value = true;
 };
@@ -111,14 +145,13 @@ const cerrarModal = () => {
     ordenSeleccionada.value = null;
 };
 
-// Clases dinámicas para los "Badges" de estado
 const badgeClases = (estado) => {
     const clases = {
         'Sugerida': 'bg-slate-100 text-slate-600',
         'Borrador': 'bg-amber-100 text-amber-700',
         'Enviada': 'bg-sky-100 text-sky-700',
         'Cotizada': 'bg-purple-100 text-purple-700 font-black ring-2 ring-purple-300 ring-offset-1',
-        'Aprobada': 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30', // Nuevo estado
+        'Aprobada': 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30', 
         'Recepcionada': 'bg-emerald-100 text-emerald-700',
         'Cancelada': 'bg-rose-100 text-rose-700',
     };
@@ -130,57 +163,153 @@ const badgeClases = (estado) => {
     <Head title="Órdenes de Compra" />
 
     <AuthenticatedLayout>
+        <div v-if="menuAbierto" @click="cerrarMenu" class="fixed inset-0 z-30"></div>
+
         <div class="py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto bg-slate-50 min-h-screen">
             
-            <div class="flex justify-between items-end mb-8">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 gap-4">
                 <div>
                     <h1 class="text-3xl font-black text-slate-800 tracking-tight">Órdenes de Compra</h1>
                     <p class="text-slate-500 font-medium text-sm mt-1">Gestión y reposición de mercadería a proveedores</p>
                 </div>
                 
-                <button @click="generarSugerencias" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl font-black text-sm shadow-xl shadow-indigo-600/30 transition-all flex items-center gap-2 group">
+                <button @click="generarSugerencias" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl font-black text-sm shadow-xl shadow-indigo-600/30 transition-all flex items-center gap-2 group whitespace-nowrap w-full sm:w-auto justify-center">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 group-hover:animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
-                    Generar Sugerencias (Automático)
+                    Generar Sugerencias Automáticas
                 </button>
             </div>
 
-            <div class="bg-white border border-slate-200 shadow-xl shadow-slate-200/40 rounded-3xl overflow-hidden">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-50 border-b border-slate-100">
-                            <th class="py-4 px-6 text-[10px] font-black tracking-widest uppercase text-slate-400">ID / Fecha</th>
-                            <th class="py-4 px-6 text-[10px] font-black tracking-widest uppercase text-slate-400">Proveedor</th>
-                            <th class="py-4 px-6 text-[10px] font-black tracking-widest uppercase text-slate-400">Estado</th>
-                            <th class="py-4 px-6 text-[10px] font-black tracking-widest uppercase text-slate-400 text-right">Total Est.</th>
-                            <th class="py-4 px-6 text-[10px] font-black tracking-widest uppercase text-slate-400 text-center">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        <tr v-for="orden in ordenes" :key="orden.id" class="hover:bg-slate-50/50 transition-colors">
-                            <td class="py-4 px-6">
-                                <div class="font-black text-slate-700">#OC-{{ orden.id.toString().padStart(4, '0') }}</div>
-                                <div class="text-xs font-bold text-slate-400">{{ formatearFecha(orden.fecha_emision) }}</div>
-                            </td>
-                            <td class="py-4 px-6 font-bold text-slate-700">{{ orden.proveedor?.razon_social }}</td>
-                            <td class="py-4 px-6">
-                                <span :class="badgeClases(orden.estado)" class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-                                    {{ orden.estado }}
-                                </span>
-                            </td>
-                            <td class="py-4 px-6 text-right font-black text-slate-800">{{ formatearDinero(orden.total_estimado) }}</td>
-                            <td class="py-4 px-6 flex justify-center gap-2">
-                                <button @click="abrirDetalles(orden)" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-sky-100 hover:text-sky-600 transition-colors">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                </button>
-                                <button v-if="!['Enviada', 'Cotizada', 'Aprobada', 'Recepcionada'].includes(orden.estado)" @click="eliminarOrden(orden)" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-rose-100 hover:text-rose-600">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                </button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="mb-6 bg-white p-4 rounded-3xl shadow-sm border border-slate-200 flex flex-col gap-4">
+                <div class="flex flex-col sm:flex-row gap-4 w-full">
+                    <div class="relative w-full sm:w-1/3">
+                        <input 
+                            v-model="formFiltros.search" 
+                            type="text" 
+                            placeholder="Buscar por ID (ej: 15)..." 
+                            class="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-sm"
+                        >
+                        <svg class="w-5 h-5 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                    
+                    <div class="w-full sm:w-1/3">
+                        <select v-model="formFiltros.estado" class="w-full border border-slate-200 rounded-xl py-2.5 px-4 focus:ring-indigo-500 focus:border-indigo-500 text-slate-600 bg-slate-50 cursor-pointer font-medium text-sm">
+                            <option value="all">Todos los estados</option>
+                            <option value="Sugerida">Sugeridas</option>
+                            <option value="Borrador">Borradores</option>
+                            <option value="Enviada">Enviadas</option>
+                            <option value="Cotizada">Cotizadas</option>
+                            <option value="Aprobada">Aprobadas</option>
+                            <option value="Recepcionada">Recepcionadas</option>
+                            <option value="Cancelada">Canceladas</option>
+                        </select>
+                    </div>
+
+                    <div class="w-full sm:w-1/3">
+                        <select v-model="formFiltros.proveedor_id" class="w-full border border-slate-200 rounded-xl py-2.5 px-4 focus:ring-indigo-500 focus:border-indigo-500 text-slate-600 bg-slate-50 cursor-pointer font-medium text-sm">
+                            <option value="all">Todos los proveedores</option>
+                            <option v-for="prov in proveedores" :key="prov.id" :value="prov.id">{{ prov.razon_social }}</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-2/3">
+                        <div class="flex items-center gap-2 w-full sm:w-1/2">
+                            <label class="text-xs font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Desde</label>
+                            <input v-model="formFiltros.fecha_desde" type="date" class="w-full border border-slate-200 rounded-xl py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 text-slate-600 bg-slate-50 text-sm">
+                        </div>
+                        <div class="flex items-center gap-2 w-full sm:w-1/2">
+                            <label class="text-xs font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Hasta</label>
+                            <input v-model="formFiltros.fecha_hasta" type="date" class="w-full border border-slate-200 rounded-xl py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 text-slate-600 bg-slate-50 text-sm">
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2 w-full sm:w-auto justify-end">
+                        <button v-if="formFiltros.search || formFiltros.estado !== 'all' || formFiltros.proveedor_id !== 'all' || formFiltros.fecha_desde || formFiltros.fecha_hasta" @click="limpiarFiltros" class="text-sm text-slate-500 hover:text-rose-500 font-bold px-4 transition-colors">
+                            Limpiar Filtros
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 shadow-xl shadow-slate-200/40 rounded-3xl overflow-visible">
+                <div class="overflow-visible">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-100">
+                                <th class="py-4 px-6 text-[10px] font-black tracking-widest uppercase text-slate-400 rounded-tl-3xl">ID / Fecha</th>
+                                <th class="py-4 px-6 text-[10px] font-black tracking-widest uppercase text-slate-400">Proveedor</th>
+                                <th class="py-4 px-6 text-[10px] font-black tracking-widest uppercase text-slate-400">Estado</th>
+                                <th class="py-4 px-6 text-[10px] font-black tracking-widest uppercase text-slate-400 text-right">Total Est.</th>
+                                <th class="py-4 px-6 text-[10px] font-black tracking-widest uppercase text-slate-400 text-center rounded-tr-3xl">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <tr v-if="ordenes.data.length === 0">
+                                <td colspan="5" class="p-10 text-center text-slate-400 italic bg-slate-50">
+                                    No se encontraron órdenes con esos filtros.
+                                </td>
+                            </tr>
+                            <tr v-for="orden in ordenes.data" :key="orden.id" class="hover:bg-slate-50/50 transition-colors">
+                                <td class="py-4 px-6">
+                                    <div class="font-black text-slate-700">#OC-{{ orden.id.toString().padStart(4, '0') }}</div>
+                                    <div class="text-xs font-bold text-slate-400">{{ formatearFecha(orden.fecha_emision) }}</div>
+                                </td>
+                                <td class="py-4 px-6 font-bold text-slate-700">{{ orden.proveedor?.razon_social }}</td>
+                                <td class="py-4 px-6">
+                                    <span :class="badgeClases(orden.estado)" class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+                                        {{ orden.estado }}
+                                    </span>
+                                </td>
+                                <td class="py-4 px-6 text-right font-black text-slate-800">{{ formatearDinero(orden.total_estimado) }}</td>
+                                
+                                <td class="py-4 px-6 text-center relative">
+                                    <button @click.stop="toggleMenu(orden.id)" class="p-2 rounded-full text-slate-400 hover:text-sky-600 hover:bg-sky-100 transition-colors focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+                                    </button>
+
+                                    <div v-if="menuAbierto === orden.id" class="absolute right-10 top-10 w-48 bg-white rounded-xl shadow-2xl border border-slate-100 z-40 py-2 animate-in fade-in zoom-in-95 duration-150">
+                                        <button @click="abrirDetalles(orden)" class="w-full text-left px-4 py-2.5 text-xs font-bold text-sky-600 hover:bg-sky-50 flex items-center gap-3 transition-colors">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                            Ver Detalles
+                                        </button>
+
+                                        <div v-if="!['Enviada', 'Cotizada', 'Aprobada', 'Recepcionada'].includes(orden.estado)">
+                                            <div class="border-t border-slate-100 my-1"></div>
+                                            <button @click="eliminarOrden(orden)" class="w-full text-left px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-3 transition-colors">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                Eliminar Orden
+                                            </button>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div v-if="ordenes.links && ordenes.data.length > 0" class="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <span class="text-sm text-slate-500 font-medium">
+                        Mostrando {{ ordenes.from }} a {{ ordenes.to }} de {{ ordenes.total }} órdenes
+                    </span>
+                    <div class="flex flex-wrap justify-center gap-1">
+                        <component
+                            :is="link.url ? 'a' : 'span'"
+                            v-for="(link, index) in ordenes.links"
+                            :key="index"
+                            :href="link.url"
+                            @click.prevent="link.url ? router.get(link.url, formFiltros, { preserveState: true }) : null"
+                            v-html="link.label"
+                            class="px-3 py-1.5 text-sm rounded-lg transition-colors border"
+                            :class="[
+                                link.active ? 'bg-indigo-600 text-white font-bold border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100',
+                                !link.url ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'cursor-pointer'
+                            ]"
+                        />
+                    </div>
+                </div>
             </div>
 
             <div v-if="showModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
