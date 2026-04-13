@@ -3,7 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import ModalProducto from './Componentes/ModalProducto.vue'; 
 import DetalleProducto from './Componentes/DetalleProducto.vue'; 
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import Swal from 'sweetalert2';
 import axios from 'axios';
 
@@ -25,8 +25,66 @@ const verAjuste = ref(false);
 const verAuditoria = ref(false);
 const movimientos = ref([]);
 
-// --- 🚀 NUEVO ESTADO PARA EL MENÚ DESPLEGABLE ---
 const menuAbierto = ref(null);
+
+// --- Filtros ---
+const busqueda = ref('');
+const filtroCategoria = ref('');
+const filtroMarca = ref('');
+const filtroEstado = ref('');
+
+const productosFiltrados = computed(() => {
+    return props.productos.filter(p => {
+        const matchBusqueda = busqueda.value === '' ||
+            p.nombre.toLowerCase().includes(busqueda.value.toLowerCase()) ||
+            p.codigo_barras?.toLowerCase().includes(busqueda.value.toLowerCase());
+        const matchCategoria = filtroCategoria.value === '' || p.categoria?.id == filtroCategoria.value;
+        const matchMarca = filtroMarca.value === '' || p.marca?.id == filtroMarca.value;
+        const matchEstado = filtroEstado.value === '' || 
+            (filtroEstado.value === 'activo' && p.estado) || 
+            (filtroEstado.value === 'inactivo' && !p.estado);
+        return matchBusqueda && matchCategoria && matchMarca && matchEstado;
+    });
+});
+
+const hayFiltrosActivos = computed(() => 
+    busqueda.value !== '' || filtroCategoria.value !== '' || filtroMarca.value !== '' || filtroEstado.value !== ''
+);
+
+const limpiarFiltros = () => {
+    busqueda.value = '';
+    filtroCategoria.value = '';
+    filtroMarca.value = '';
+    filtroEstado.value = '';
+};
+
+// --- 🚀 LÓGICA DE PAGINACIÓN ---
+const paginaActual = ref(1);
+const itemsPorPagina = ref(7); // 7 por defecto, como pediste
+
+// Si cambia algún filtro o la cantidad por página, volvemos a la página 1
+watch([busqueda, filtroCategoria, filtroMarca, filtroEstado, itemsPorPagina], () => {
+    paginaActual.value = 1;
+});
+
+const totalPaginas = computed(() => {
+    return Math.ceil(productosFiltrados.value.length / itemsPorPagina.value) || 1;
+});
+
+const productosPaginados = computed(() => {
+    const inicio = (paginaActual.value - 1) * itemsPorPagina.value;
+    const fin = inicio + itemsPorPagina.value;
+    return productosFiltrados.value.slice(inicio, fin);
+});
+
+const paginaAnterior = () => {
+    if (paginaActual.value > 1) paginaActual.value--;
+};
+
+const paginaSiguiente = () => {
+    if (paginaActual.value < totalPaginas.value) paginaActual.value++;
+};
+// --------------------------------
 
 const toggleMenu = (id) => {
     menuAbierto.value = menuAbierto.value === id ? null : id;
@@ -34,6 +92,11 @@ const toggleMenu = (id) => {
 
 const cerrarMenu = () => {
     menuAbierto.value = null;
+};
+
+const calcularTotalStock = (producto) => {
+    if (!producto.sucursales) return 0;
+    return producto.sucursales.reduce((acc, suc) => acc + Number(suc.pivot?.cantidad_fisica || 0), 0);
 };
 
 const formAjuste = useForm({
@@ -48,7 +111,6 @@ watch(() => page.props.flash, (nuevo) => {
     if (nuevo.error) Swal.fire({ title: 'Error', text: nuevo.error, icon: 'error' });
 }, { deep: true });
 
-// Modificamos las funciones para que también cierren el menú al hacer clic
 const abrirAjuste = (p) => {
     seleccionado.value = p;
     formAjuste.reset();
@@ -113,105 +175,258 @@ const toggleEstado = (p) => {
 
     <AuthenticatedLayout>
         <template #header>
-            <h2 class="font-semibold text-xl text-gray-800 leading-tight">Control de Inventario</h2>
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Módulo</p>
+                    <h2 class="text-xl font-semibold text-slate-800 mt-0.5">Control de Inventario</h2>
+                </div>
+            </div>
         </template>
 
         <div v-if="menuAbierto" @click="cerrarMenu" class="fixed inset-0 z-30"></div>
 
-        <div class="py-12">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-                
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-lg font-bold text-gray-600 uppercase tracking-wider">Listado de Productos</h3>
-                    <button @click="abrirNuevo" class="bg-sky-600 text-white px-6 py-2.5 rounded-lg font-bold shadow-lg hover:bg-sky-700 hover:-translate-y-0.5 transition-all active:scale-95">
-                        + Nuevo Producto
+        <div class="py-8 bg-slate-50 min-h-screen">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-5">
+
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-base font-semibold text-slate-700">Listado de productos</h3>
+                        <p class="text-xs text-slate-400 mt-0.5">
+                            <span class="font-medium text-slate-600">{{ productosFiltrados.length }}</span>
+                            de {{ productos.length }} productos
+                            <span v-if="hayFiltrosActivos" class="text-blue-500 font-medium"> · filtrado</span>
+                        </p>
+                    </div>
+                    <button @click="abrirNuevo"
+                        class="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg font-medium text-sm hover:bg-blue-700 active:scale-95 shadow-sm shadow-blue-600/20">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                        </svg>
+                        Nuevo producto
                     </button>
                 </div>
 
-                <div class="bg-white shadow-xl rounded-2xl border border-gray-100 p-4">
-                    <div class="overflow-visible">
-                        <table class="w-full text-left border-separate border-spacing-y-2">
+                <div class="bg-white border border-slate-200 rounded-xl px-5 py-4 shadow-sm flex flex-col md:flex-row md:items-center gap-3">
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
+                        <div class="relative">
+                            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                            <input
+                                v-model="busqueda"
+                                type="text"
+                                placeholder="Buscar por nombre o código..."
+                                class="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                        </div>
+
+                        <div class="relative">
+                            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/>
+                            </svg>
+                            <select
+                                v-model="filtroCategoria"
+                                class="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none">
+                                <option value="">Todas las categorías</option>
+                                <option v-for="cat in categorias" :key="cat.id" :value="cat.id">{{ cat.nombreCategoria }}</option>
+                            </select>
+                        </div>
+
+                        <div class="relative">
+                            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+                            </svg>
+                            <select
+                                v-model="filtroMarca"
+                                class="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none">
+                                <option value="">Todas las marcas</option>
+                                <option v-for="m in marcas" :key="m.id" :value="m.id">{{ m.nombreMarca }}</option>
+                            </select>
+                        </div>
+
+                        <div class="relative">
+                            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <select
+                                v-model="filtroEstado"
+                                class="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none">
+                                <option value="">Todos los estados</option>
+                                <option value="activo">Activos</option>
+                                <option value="inactivo">Inactivos</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button
+                        v-if="hayFiltrosActivos"
+                        @click="limpiarFiltros"
+                        class="mt-3 md:mt-0 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-red-50 text-red-600 border border-red-100 text-xs font-bold hover:bg-red-100 hover:text-red-700 transition-colors whitespace-nowrap w-full md:w-auto">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        Limpiar Filtros
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
                             <thead>
-                                <tr class="bg-sky-50 text-sky-900 uppercase text-xs font-black">
-                                    <th class="p-4 rounded-l-xl">Cód. Barras</th>
-                                    <th class="p-4">Producto</th>
-                                    <th class="p-4 text-center">Imagen</th>
-                                    <th class="p-4 text-right">Precio Venta</th>
-                                    <th class="p-4 text-center">Estado</th>
-                                    <th class="p-4 text-center rounded-r-xl">Acciones</th>
+                                <tr class="border-b border-slate-100 bg-slate-50/80 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+                                    <th class="px-5 py-4">Cód. / SKU</th>
+                                    <th class="px-5 py-4">Producto</th>
+                                    <th class="px-5 py-4 text-center">Stock</th>
+                                    <th class="px-5 py-4 text-right">P. Venta</th>
+                                    <th class="px-5 py-4 text-center">Estado</th>
+                                    <th class="px-5 py-4 text-center">Acciones</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <tr v-if="productos.length === 0">
-                                    <td colspan="6" class="p-10 text-center text-gray-400 italic bg-gray-50 rounded-xl">
-                                        No hay productos registrados todavía. ¡Empezá cargando uno nuevo!
+                            <tbody class="divide-y divide-slate-100">
+
+                                <tr v-if="productosFiltrados.length === 0 && hayFiltrosActivos">
+                                    <td colspan="6" class="py-16 text-center">
+                                        <div class="flex flex-col items-center gap-3">
+                                            <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
+                                                <svg class="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <p class="text-sm font-medium text-slate-600">Sin resultados</p>
+                                                <p class="text-xs text-slate-400 mt-1">Ningún producto coincide con los filtros aplicados.</p>
+                                            </div>
+                                            <button @click="limpiarFiltros" class="text-xs text-blue-600 font-medium hover:underline">Limpiar filtros</button>
+                                        </div>
                                     </td>
                                 </tr>
 
-                                <tr v-for="p in productos" :key="p.id" 
-                                    class="bg-white border-b hover:bg-sky-50 transition-all duration-200 group shadow-sm"
-                                    :class="{'opacity-50 grayscale': !p.estado}">
-                                    
-                                    <td class="p-4 font-mono font-bold text-sky-800">{{ p.codigo_barras }}</td>
-                                    <td class="p-4 font-bold text-slate-700">{{ p.nombre }}</td>
-                                    
-                                    <td class="p-4">
-                                        <div class="flex justify-center">
-                                            <img v-if="p.url_imagen" :src="p.url_imagen" class="w-12 h-12 object-cover rounded-xl border-2 border-white shadow-md group-hover:scale-110 transition-transform">
-                                            <div v-else class="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center text-gray-300">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                <tr v-else-if="productos.length === 0">
+                                    <td colspan="6" class="py-20 text-center">
+                                        <div class="flex flex-col items-center gap-3 text-slate-300">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-14 w-14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                            </svg>
+                                            <div>
+                                                <p class="text-sm font-medium text-slate-400">No hay mercadería cargada</p>
+                                                <p class="text-xs text-slate-300 mt-1">Registrá tu primer producto para comenzar.</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <tr v-for="p in productosPaginados" :key="p.id" class="hover:bg-blue-50/30 group">
+
+                                    <td class="px-5 py-4" :class="{ 'opacity-40 grayscale': !p.estado }">
+                                        <span class="font-mono text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-md tracking-tight block w-max">
+                                            {{ p.codigo_barras }}
+                                        </span>
+                                    </td>
+
+                                    <td class="px-5 py-4" :class="{ 'opacity-40 grayscale': !p.estado }">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-11 h-11 shrink-0 rounded-xl overflow-hidden border border-slate-100 bg-slate-50 flex items-center justify-center">
+                                                <img v-if="p.url_imagen" :src="p.url_imagen" class="w-full h-full object-cover">
+                                                <svg v-else class="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <p class="text-sm font-semibold text-slate-800 leading-snug">{{ p.nombre }}</p>
+                                                <div class="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                    <span class="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                                        {{ p.categoria?.nombreCategoria }}
+                                                    </span>
+                                                    <span class="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                                        {{ p.marca?.nombreMarca }}
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
                                     </td>
 
-                                    <td class="p-4 text-right font-black text-sky-600 font-mono text-lg">${{ p.precio_venta }}</td>
-                                    
-                                    <td class="p-4 text-center">
-                                        <span :class="p.estado ? 'text-emerald-600 bg-emerald-50' : 'text-rose-600 bg-rose-50'" class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm">
-                                            {{ p.estado ? 'Activo' : 'Baja' }}
+                                    <td class="px-5 py-4 text-center" :class="{ 'opacity-40 grayscale': !p.estado }">
+                                        <div class="inline-flex flex-col items-center gap-1">
+                                            <span :class="calcularTotalStock(p) <= p.stock_minimo
+                                                    ? 'text-red-700 bg-red-50 border-red-200'
+                                                    : 'text-emerald-700 bg-emerald-50 border-emerald-200'"
+                                                class="px-3 py-1 rounded-lg text-xs font-bold border tabular-nums">
+                                                {{ Number(calcularTotalStock(p)).toFixed(p.unidad_medida === 'Kg' ? 3 : 0) }}
+                                            </span>
+                                            <span class="text-[9px] text-slate-400 uppercase tracking-widest font-medium">{{ p.unidad_medida }}</span>
+                                        </div>
+                                    </td>
+
+                                    <td class="px-5 py-4 text-right" :class="{ 'opacity-40 grayscale': !p.estado }">
+                                        <div class="flex items-baseline justify-end gap-0.5">
+                                            <span class="text-xs text-slate-400">$</span>
+                                            <span class="text-base font-bold text-slate-800 tabular-nums">{{ Number(p.precio_venta).toLocaleString('es-AR') }}</span>
+                                        </div>
+                                    </td>
+
+                                    <td class="px-5 py-4 text-center" :class="{ 'opacity-40 grayscale': !p.estado }">
+                                        <span :class="p.estado
+                                                ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                                : 'text-slate-400 bg-slate-100 border-slate-200'"
+                                            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold border">
+                                            <span :class="p.estado ? 'bg-emerald-500' : 'bg-slate-400'" class="w-1.5 h-1.5 rounded-full"></span>
+                                            {{ p.estado ? 'Activo' : 'Inactivo' }}
                                         </span>
                                     </td>
-                                    
-                                    <td class="p-4 text-center relative">
-                                        <button @click.stop="toggleMenu(p.id)" class="p-2 rounded-full text-slate-400 hover:text-sky-600 hover:bg-sky-100 transition-colors focus:outline-none">
-                                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+
+                                    <td class="px-5 py-4 text-center relative opacity-100">
+                                        <button @click.stop="toggleMenu(p.id)"
+                                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-500 hover:border-slate-300 hover:text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                            </svg>
+                                            Opciones
                                         </button>
 
-                                        <div v-if="menuAbierto === p.id" class="absolute right-10 top-10 w-48 bg-white rounded-xl shadow-2xl border border-slate-100 z-40 py-2 animate-in fade-in zoom-in-95 duration-150">
-                                            
-                                            <button @click="abrirAjuste(p)" class="w-full text-left px-4 py-2.5 text-xs font-bold text-fuchsia-600 hover:bg-fuchsia-50 flex items-center gap-3 transition-colors">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
-                                                Ajustar Stock
+                                        <div v-if="menuAbierto === p.id"
+                                            class="absolute right-[80%] top-0 mr-2 w-52 bg-white rounded-xl shadow-xl border border-slate-200 z-[100] py-1.5 overflow-hidden">
+
+                                            <div class="px-4 py-2 border-b border-slate-50 mb-1">
+                                                <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-widest truncate">{{ p.nombre }}</p>
+                                            </div>
+
+                                            <button @click="abrirAjuste(p)"
+                                                class="w-full text-left px-4 py-2.5 text-xs font-medium text-violet-600 hover:bg-violet-50 flex items-center gap-2.5">
+                                                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
+                                                Ajustar stock
                                             </button>
 
-                                            <button @click="abrirAuditoria(p)" class="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                                Auditoría
+                                            <button @click="abrirAuditoria(p)"
+                                                class="w-full text-left px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-2.5">
+                                                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                Historial
                                             </button>
 
-                                            <button @click="abrirStock(p)" class="w-full text-left px-4 py-2.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-3 transition-colors">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
-                                                Ver Disp. Física
+                                            <button @click="abrirStock(p)"
+                                                class="w-full text-left px-4 py-2.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 flex items-center gap-2.5">
+                                                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                                                Stock por suc.
                                             </button>
 
-                                            <button @click="abrirDetalle(p)" class="w-full text-left px-4 py-2.5 text-xs font-bold text-sky-600 hover:bg-sky-50 flex items-center gap-3 transition-colors">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                                Ver Info Completa
+                                            <button @click="abrirDetalle(p)"
+                                                class="w-full text-left px-4 py-2.5 text-xs font-medium text-sky-600 hover:bg-sky-50 flex items-center gap-2.5">
+                                                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                                Detalles
                                             </button>
 
-                                            <button @click="abrirEditar(p)" class="w-full text-left px-4 py-2.5 text-xs font-bold text-amber-600 hover:bg-amber-50 flex items-center gap-3 transition-colors">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                                Editar Datos
+                                            <button @click="abrirEditar(p)"
+                                                class="w-full text-left px-4 py-2.5 text-xs font-medium text-amber-600 hover:bg-amber-50 flex items-center gap-2.5">
+                                                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                                Editar
                                             </button>
 
                                             <div class="border-t border-slate-100 my-1"></div>
 
-                                            <button @click="toggleEstado(p)" 
-                                                class="w-full text-left px-4 py-2.5 text-xs font-bold flex items-center gap-3 transition-colors"
-                                                :class="p.estado ? 'text-rose-600 hover:bg-rose-50' : 'text-emerald-600 hover:bg-emerald-50'">
-                                                <svg v-if="p.estado" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-                                                <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                                {{ p.estado ? 'Dar de Baja' : 'Activar Producto' }}
+                                            <button @click="toggleEstado(p)"
+                                                class="w-full text-left px-4 py-2.5 text-xs font-medium flex items-center gap-2.5"
+                                                :class="p.estado ? 'text-red-500 hover:bg-red-50' : 'text-emerald-600 hover:bg-emerald-50'">
+                                                <svg v-if="p.estado" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                                                <svg v-else class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                {{ p.estado ? 'Dar de baja' : 'Reactivar' }}
                                             </button>
                                         </div>
                                     </td>
@@ -219,130 +434,191 @@ const toggleEstado = (p) => {
                             </tbody>
                         </table>
                     </div>
+
+                    <div v-if="productosFiltrados.length > 0" class="px-5 py-4 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        
+                        <div class="flex items-center gap-3">
+                            <p class="text-xs text-slate-500 font-medium">
+                                Viendo del <span class="font-bold text-slate-700">{{ (paginaActual - 1) * itemsPorPagina + 1 }}</span> al 
+                                <span class="font-bold text-slate-700">{{ Math.min(paginaActual * itemsPorPagina, productosFiltrados.length) }}</span> de 
+                                <span class="font-bold text-slate-700">{{ productosFiltrados.length }}</span>
+                            </p>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <button @click="paginaAnterior" :disabled="paginaActual === 1"
+                                class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm">
+                                Anterior
+                            </button>
+                            <span class="text-xs font-bold text-slate-500 px-2">
+                                Pág. {{ paginaActual }} de {{ totalPaginas }}
+                            </span>
+                            <button @click="paginaSiguiente" :disabled="paginaActual === totalPaginas"
+                                class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm">
+                                Siguiente
+                            </button>
+                        </div>
+
+                    </div>
                 </div>
+
             </div>
         </div>
 
         <ModalProducto :mostrar="verModal" :producto="seleccionado" :categorias="categorias" :marcas="marcas" :proveedores="proveedores" @cerrar="cerrarModalGlobal" />
         <DetalleProducto :mostrar="verDetalle" :producto="seleccionado" @cerrar="verDetalle = false" />
-        
-        <div v-if="verStock && seleccionado" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
-                <div class="bg-indigo-600 p-4 text-white text-center font-black uppercase tracking-widest text-xs">Disponibilidad Física</div>
-                <div class="p-6">
-                    <h3 class="text-xl font-black text-slate-800 text-center mb-6">{{ seleccionado.nombre }}</h3>
-                    <div class="space-y-3">
-                        <div v-if="!seleccionado.sucursales || seleccionado.sucursales.length === 0" class="text-center text-slate-500 italic text-sm">Este producto no tiene stock registrado.</div>
-                        <div v-for="suc in seleccionado.sucursales" :key="suc.id" class="flex justify-between items-center p-3 border-b border-slate-100 bg-slate-50 rounded-xl">
-                            <span class="font-bold text-slate-700">{{ suc.nombre }}</span>
-                            <span class="px-3 py-1 bg-indigo-100 text-indigo-700 font-black rounded-lg shadow-sm">
-                                {{ Number(suc.pivot?.cantidad_fisica || 0).toFixed(3) }} {{ seleccionado.unidad_medida }}
-                            </span>
-                        </div>
+
+        <div v-if="verStock && seleccionado" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-100">
+                <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                    <div>
+                        <p class="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Disponibilidad física</p>
+                        <h3 class="text-base font-semibold text-slate-700 mt-0.5">{{ seleccionado.nombre }}</h3>
                     </div>
-                    <button @click="verStock = false" class="w-full mt-6 bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 uppercase text-xs tracking-widest shadow-lg">Cerrar Stock</button>
+                    <button @click="verStock = false" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 text-lg leading-none">✕</button>
+                </div>
+                <div class="p-6 space-y-2">
+                    <div v-if="!seleccionado.sucursales || seleccionado.sucursales.length === 0"
+                        class="text-center py-8 text-slate-400 text-sm bg-slate-50 rounded-xl">
+                        Sin stock registrado en sucursales.
+                    </div>
+                    <div v-for="suc in seleccionado.sucursales" :key="suc.id"
+                        class="flex justify-between items-center px-4 py-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <span class="text-sm font-medium text-slate-600">{{ suc.nombre }}</span>
+                        <span class="text-sm font-semibold text-indigo-700">
+                            {{ Number(suc.pivot?.cantidad_fisica || 0).toFixed(seleccionado.unidad_medida === 'Kg' ? 3 : 0) }}
+                            <span class="text-[10px] text-indigo-400 ml-1">{{ seleccionado.unidad_medida }}</span>
+                        </span>
+                    </div>
+                </div>
+                <div class="px-6 pb-6">
+                    <button @click="verStock = false" class="w-full py-3 bg-slate-900 text-white rounded-xl text-sm font-medium hover:bg-black active:scale-95">Cerrar</button>
                 </div>
             </div>
         </div>
 
-        <div v-if="verAjuste && seleccionado" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
-                <div class="bg-fuchsia-600 p-4 text-white text-center font-black uppercase tracking-widest text-xs">Ajuste Manual de Stock</div>
-                <form @submit.prevent="guardarAjuste" class="p-6">
-                    <h3 class="text-xl font-black text-slate-800 text-center mb-6">{{ seleccionado.nombre }}</h3>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Sucursal a Ajustar</label>
-                            <select v-model="formAjuste.sucursal_id" class="w-full rounded-xl border-slate-200 bg-slate-50 focus:ring-fuchsia-500" required>
-                                <option value="" disabled>Seleccione una sucursal...</option>
-                                <option v-for="suc in sucursales" :key="suc.id" :value="suc.id">{{ suc.nombre }}</option>
+        <div v-if="verAjuste && seleccionado" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-100">
+                <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                    <div>
+                        <p class="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Gestión de inventario</p>
+                        <h3 class="text-base font-semibold text-slate-700 mt-0.5">{{ seleccionado.nombre }}</h3>
+                    </div>
+                    <button @click="verAjuste = false" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 text-lg leading-none">✕</button>
+                </div>
+                <form @submit.prevent="guardarAjuste" class="p-6 space-y-5">
+                    <div>
+                        <label class="block text-[10px] font-medium uppercase text-slate-400 mb-1.5 tracking-widest">Sucursal</label>
+                        <select v-model="formAjuste.sucursal_id" class="w-full rounded-xl border-slate-200 bg-slate-50 focus:ring-violet-500 py-2.5 text-sm font-medium text-slate-700" required>
+                            <option value="" disabled>Seleccione sucursal...</option>
+                            <option v-for="suc in sucursales" :key="suc.id" :value="suc.id">{{ suc.nombre }}</option>
+                        </select>
+                    </div>
+                    <div class="flex gap-3">
+                        <div class="flex-1">
+                            <label class="block text-[10px] font-medium uppercase text-slate-400 mb-1.5 tracking-widest">Operación</label>
+                            <select v-model="formAjuste.tipo_ajuste"
+                                class="w-full rounded-xl border-slate-200 bg-slate-50 py-2.5 text-sm font-medium"
+                                :class="formAjuste.tipo_ajuste === 'Restar' ? 'text-red-600' : 'text-emerald-600'">
+                                <option value="Sumar">+ Ingresar</option>
+                                <option value="Restar">− Descontar</option>
                             </select>
                         </div>
-                        <div class="flex gap-4">
-                            <div class="w-1/3">
-                                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Operación</label>
-                                <select v-model="formAjuste.tipo_ajuste" class="w-full rounded-xl border-slate-200 bg-slate-50 font-bold" :class="formAjuste.tipo_ajuste === 'Restar' ? 'text-rose-600' : 'text-emerald-600'">
-                                    <option value="Sumar">+ Ingresar</option>
-                                    <option value="Restar">- Descontar</option>
-                                </select>
-                            </div>
-                            <div class="w-2/3">
-                                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Cantidad ({{ seleccionado.unidad_medida }})</label>
-                                <input v-model="formAjuste.cantidad" type="number" step="0.001" min="0.001" class="w-full rounded-xl border-slate-200 bg-slate-50 focus:ring-fuchsia-500" placeholder="Ej: 0.250 o 1" required>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Motivo del Ajuste</label>
-                            <select v-model="formAjuste.motivo" class="w-full rounded-xl border-slate-200 bg-slate-50 focus:ring-fuchsia-500" required>
-                                <option>Rotura o Daño</option>
-                                <option>Vencimiento</option>
-                                <option>Faltante / Robo</option>
-                                <option>Sobrante / Encontrado</option>
-                                <option>Consumo Interno</option>
-                                <option>Corrección de Inventario</option>
-                                <option>Otro</option>
-                            </select>
+                        <div class="flex-1">
+                            <label class="block text-[10px] font-medium uppercase text-slate-400 mb-1.5 tracking-widest">Cantidad ({{ seleccionado.unidad_medida }})</label>
+                            <input v-model="formAjuste.cantidad" type="number" step="0.001" min="0.001"
+                                class="w-full rounded-xl border-slate-200 bg-slate-50 focus:ring-violet-500 py-2.5 text-sm font-medium text-slate-700"
+                                placeholder="0.000" required>
                         </div>
                     </div>
-                    <div class="mt-6 flex gap-3">
-                        <button type="button" @click="verAjuste = false" class="w-1/3 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 uppercase text-xs tracking-widest">Cancelar</button>
-                        <button type="submit" class="w-2/3 bg-fuchsia-600 text-white py-3 rounded-xl font-bold hover:bg-fuchsia-700 uppercase text-xs tracking-widest shadow-lg" :disabled="formAjuste.processing">Confirmar Ajuste</button>
+                    <div>
+                        <label class="block text-[10px] font-medium uppercase text-slate-400 mb-1.5 tracking-widest">Motivo</label>
+                        <select v-model="formAjuste.motivo" class="w-full rounded-xl border-slate-200 bg-slate-50 focus:ring-violet-500 py-2.5 text-sm font-medium text-slate-700" required>
+                            <option>Rotura o Daño</option>
+                            <option>Vencimiento</option>
+                            <option>Faltante / Robo</option>
+                            <option>Sobrante / Encontrado</option>
+                            <option>Consumo Interno</option>
+                            <option>Corrección de Inventario</option>
+                            <option>Otro</option>
+                        </select>
+                    </div>
+                    <div class="flex gap-3 pt-2">
+                        <button type="button" @click="verAjuste = false"
+                            class="flex-1 py-3 rounded-xl text-sm font-medium text-slate-500 border border-slate-200 hover:bg-slate-50">
+                            Cancelar
+                        </button>
+                        <button type="submit"
+                            class="flex-1 bg-violet-600 text-white py-3 rounded-xl text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
+                            :disabled="formAjuste.processing">
+                            Guardar ajuste
+                        </button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <div v-if="verAuditoria && seleccionado" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
-                <div class="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <div v-if="verAuditoria && seleccionado" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl flex flex-col max-h-[88vh] border border-slate-100">
+                <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
                     <div>
-                        <h3 class="font-black text-xl text-slate-800 tracking-tight flex items-center gap-2">
-                            <svg class="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-                            Auditoría de Stock
+                        <p class="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Historial de movimientos</p>
+                        <h3 class="text-base font-semibold text-slate-700 mt-0.5">
+                            {{ seleccionado.nombre }}
+                            <span class="text-slate-400 font-normal text-sm">({{ seleccionado.unidad_medida }})</span>
                         </h3>
-                        <p class="text-xs font-bold text-slate-500 mt-1 uppercase tracking-widest">{{ seleccionado.nombre }} ({{ seleccionado.unidad_medida }})</p>
                     </div>
-                    <button @click="verAuditoria = false" class="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center hover:bg-slate-300">✕</button>
+                    <button @click="verAuditoria = false" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 text-lg leading-none">✕</button>
                 </div>
-                <div class="p-6 overflow-y-auto flex-1 bg-slate-50">
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                        <table class="w-full text-left">
-                            <thead>
-                                <tr class="bg-slate-100 border-b border-slate-200 text-[10px] uppercase font-black text-slate-500 tracking-widest">
-                                    <th class="py-3 px-4">Fecha y Hora</th>
-                                    <th class="py-3 px-4">Sucursal</th>
-                                    <th class="py-3 px-4">Usuario / Motivo</th>
-                                    <th class="py-3 px-4 text-center">Previo</th>
-                                    <th class="py-3 px-4 text-center">Mov.</th>
-                                    <th class="py-3 px-4 text-center">Actual</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-100">
-                                <tr v-if="movimientos.length === 0">
-                                    <td colspan="6" class="py-10 text-center text-slate-400 italic">No hay registros de movimientos para este producto.</td>
-                                </tr>
-                                <tr v-for="mov in movimientos" :key="mov.id" class="hover:bg-slate-50/50 transition-colors">
-                                    <td class="py-3 px-4">
-                                        <div class="font-bold text-slate-700 text-sm">{{ new Date(mov.created_at).toLocaleDateString('es-AR') }}</div>
-                                        <div class="text-[10px] text-slate-400 font-mono">{{ new Date(mov.created_at).toLocaleTimeString('es-AR') }}</div>
-                                    </td>
-                                    <td class="py-3 px-4 font-bold text-slate-600 text-xs">{{ mov.sucursal }}</td>
-                                    <td class="py-3 px-4">
-                                        <div class="font-bold text-slate-800 text-xs">{{ mov.tipo_movimiento }}</div>
-                                        <div class="text-[10px] text-slate-500 truncate max-w-[200px]" :title="mov.motivo">{{ mov.usuario }} • {{ mov.motivo || 'Sin motivo' }}</div>
-                                    </td>
-                                    <td class="py-3 px-4 text-center font-mono text-xs text-slate-400">{{ Number(mov.cantidad_anterior).toFixed(3) }}</td>
-                                    <td class="py-3 px-4 text-center font-mono font-black text-sm" :class="mov.cantidad_movimiento > 0 ? 'text-emerald-500' : 'text-rose-500'">
-                                        {{ mov.cantidad_movimiento > 0 ? '+' : '' }}{{ Number(mov.cantidad_movimiento).toFixed(3) }}
-                                    </td>
-                                    <td class="py-3 px-4 text-center font-mono font-black text-slate-800 text-sm">{{ Number(mov.cantidad_actual).toFixed(3) }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="overflow-y-auto flex-1 custom-scrollbar">
+                    <table class="w-full text-left">
+                        <thead class="sticky top-0 z-10">
+                            <tr class="bg-slate-50 border-b border-slate-100 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+                                <th class="px-5 py-3.5">Fecha</th>
+                                <th class="px-5 py-3.5">Sucursal</th>
+                                <th class="px-5 py-3.5">Detalles</th>
+                                <th class="px-5 py-3.5 text-center">Previo</th>
+                                <th class="px-5 py-3.5 text-center">Mov.</th>
+                                <th class="px-5 py-3.5 text-center">Final</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            <tr v-if="movimientos.length === 0">
+                                <td colspan="6" class="py-16 text-center text-sm text-slate-400">Sin movimientos registrados para este producto.</td>
+                            </tr>
+                            <tr v-for="mov in movimientos" :key="mov.id" class="hover:bg-slate-50 bg-white">
+                                <td class="px-5 py-3.5">
+                                    <p class="text-xs font-medium text-slate-700">{{ new Date(mov.created_at).toLocaleDateString('es-AR') }}</p>
+                                    <p class="text-[10px] text-slate-400 mt-0.5">{{ new Date(mov.created_at).toLocaleTimeString('es-AR') }}</p>
+                                </td>
+                                <td class="px-5 py-3.5 text-xs font-medium text-indigo-600 uppercase tracking-tight">{{ mov.sucursal }}</td>
+                                <td class="px-5 py-3.5">
+                                    <p class="text-xs font-medium text-slate-700">{{ mov.tipo_movimiento }}</p>
+                                    <p class="text-[10px] text-slate-400 mt-0.5 truncate max-w-[180px]">{{ mov.usuario }} · {{ mov.motivo || 'Sin motivo' }}</p>
+                                </td>
+                                <td class="px-5 py-3.5 text-center font-mono text-xs text-slate-300">{{ Number(mov.cantidad_anterior).toFixed(3) }}</td>
+                                <td class="px-5 py-3.5 text-center font-mono text-sm font-semibold"
+                                    :class="mov.cantidad_movimiento > 0 ? 'text-emerald-600' : 'text-red-500'">
+                                    {{ mov.cantidad_movimiento > 0 ? '+' : '' }}{{ Number(mov.cantidad_movimiento).toFixed(3) }}
+                                </td>
+                                <td class="px-5 py-3.5 text-center">
+                                    <span class="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-1 rounded-md">
+                                        {{ Number(mov.cantidad_actual).toFixed(3) }}
+                                    </span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
 
     </AuthenticatedLayout>
 </template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #e2e8f0; border-radius: 20px; }
+.custom-scrollbar { scrollbar-width: thin; scrollbar-color: #e2e8f0 transparent; }
+</style>

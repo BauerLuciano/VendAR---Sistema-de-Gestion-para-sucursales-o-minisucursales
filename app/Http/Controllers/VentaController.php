@@ -9,7 +9,7 @@ use App\Models\TurnoCaja;
 use App\Models\Consumidor;
 use App\Models\CuentaCorriente;
 use App\Models\MovimientoCuentaCorriente;
-use App\Models\MovimientoCaja; // <-- AGREGADO: Para registrar ingresos y egresos
+use App\Models\MovimientoCaja;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -48,6 +48,24 @@ class VentaController extends Controller
         try {
             DB::beginTransaction();
 
+            $turno = TurnoCaja::with('caja')->findOrFail($request->turno_caja_id);
+            $sucursalId = $turno->caja->sucursal_id;
+
+            // 🛑 VALIDACIÓN DE HIERRO: Verificamos stock antes de procesar nada
+            foreach ($request->items as $item) {
+                $stockActual = DB::table('producto_sucursal')
+                    ->where('producto_id', $item['id'])
+                    ->where('sucursal_id', $sucursalId)
+                    ->lockForUpdate() // Bloqueamos la fila para evitar que otra venta se meta en el medio
+                    ->first();
+
+                if (!$stockActual || $stockActual->cantidad_fisica < $item['cantidad']) {
+                    $nombre = $item['nombre'] ?? "Producto ID: {$item['id']}";
+                    $disp = $stockActual ? $stockActual->cantidad_fisica : 0;
+                    throw new \Exception("Stock insuficiente para: {$nombre}. Disponible: {$disp}");
+                }
+            }
+
             // 1. Crear la Venta
             $venta = Venta::create([
                 'turno_caja_id' => $request->turno_caja_id,
@@ -74,9 +92,8 @@ class VentaController extends Controller
                     'descripcion'         => 'Compra en POS',
                 ]);
             } 
-            // 3. Lógica de CAJA (Ingreso de dinero real)
+            // 3. Lógica de CAJA
             else {
-                // Formateamos el método de pago para que coincida con lo que espera tu Vue (EFECTIVO, MERCADO_PAGO, etc.)
                 $metodoPagoCaja = strtoupper(str_replace(' ', '_', $request->metodo_pago));
 
                 MovimientoCaja::create([
@@ -89,10 +106,7 @@ class VentaController extends Controller
                 ]);
             }
 
-            // 4. Procesar Stock
-            $turno = TurnoCaja::with('caja')->findOrFail($request->turno_caja_id);
-            $sucursalId = $turno->caja->sucursal_id;
-
+            // 4. Procesar Detalle y Descuento de Stock
             foreach ($request->items as $item) {
                 DetalleVenta::create([
                     'venta_id'        => $venta->id,
@@ -102,10 +116,25 @@ class VentaController extends Controller
                     'subtotal'        => $item['cantidad'] * $item['precio_venta'],
                 ]);
 
+                // Descontamos físicamente
                 DB::table('producto_sucursal')
                     ->where('producto_id', $item['id'])
                     ->where('sucursal_id', $sucursalId) 
                     ->decrement('cantidad_fisica', $item['cantidad']);
+                
+                // Registramos auditoría de salida (Opcional, pero recomendado)
+                DB::table('movimientos_stock')->insert([
+                    'producto_id' => $item['id'],
+                    'sucursal_id' => $sucursalId,
+                    'user_id' => auth()->id(),
+                    'tipo_movimiento' => 'Venta',
+                    'cantidad_anterior' => $stockActual->cantidad_fisica,
+                    'cantidad_movimiento' => -$item['cantidad'],
+                    'cantidad_actual' => $stockActual->cantidad_fisica - $item['cantidad'],
+                    'motivo' => "Venta POS #{$venta->id}",
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
             }
 
             DB::commit();
@@ -114,7 +143,7 @@ class VentaController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error($e->getMessage());
-            return redirect()->back()->withErrors(['error' => 'Falla en BD: ' . $e->getMessage()]);
+            return redirect()->back()->withErrors(['error' => $e->getMessage()]);
         }
     }
 
@@ -135,7 +164,7 @@ class VentaController extends Controller
                     ->increment('cantidad_fisica', $detalle->cantidad);
             }
 
-            // 2. Devolver plata o ajustar deuda
+            // 2. Ajustar dinero
             if ($venta->metodo_pago === 'Cuenta Corriente' && $venta->consumidor_id) {
                 $cuenta = CuentaCorriente::where('consumidor_id', $venta->consumidor_id)->first();
                 if ($cuenta) {
@@ -149,9 +178,7 @@ class VentaController extends Controller
                     ]);
                 }
             } else {
-                // Si la venta fue en efectivo/tarjeta, tenemos que sacar la plata de la caja (Egreso)
                 $metodoPagoCaja = strtoupper(str_replace(' ', '_', $venta->metodo_pago));
-
                 MovimientoCaja::create([
                     'turno_caja_id' => $venta->turno_caja_id,
                     'tipo'          => 'EGRESO',
@@ -162,7 +189,6 @@ class VentaController extends Controller
                 ]);
             }
 
-            // 3. Actualizar estado
             $venta->update(['estado' => 'Cancelada', 'motivo_anulacion' => $request->motivo]);
             return redirect()->back();
         });

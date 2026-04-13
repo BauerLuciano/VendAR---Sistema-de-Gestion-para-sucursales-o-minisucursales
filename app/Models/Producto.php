@@ -13,6 +13,7 @@ class Producto extends Model
     protected $fillable = [
         'categoria_id',
         'marca_id',
+        'proveedor_id',
         'nombre',
         'codigo_barras',
         'descripcion',
@@ -23,7 +24,6 @@ class Producto extends Model
         'stock_minimo',
         'imagen',
         'estado',
-        'proveedor_id',
     ];
 
     protected $casts = [
@@ -31,6 +31,7 @@ class Producto extends Model
         'estado' => 'boolean',
         'precio_costo' => 'decimal:2',
         'precio_venta' => 'decimal:2',
+        'stock_minimo' => 'decimal:3', // Soportar decimales como 0.500 kg
     ];
 
     protected $appends = ['url_imagen', 'sku'];
@@ -48,23 +49,25 @@ class Producto extends Model
         return $this->codigo_barras;
     }
 
-    public function categoria() { return $this->belongsTo(Categoria::class, 'categoria_id'); }
-    public function marca() { return $this->belongsTo(Marca::class, 'marca_id'); }
-    
-    public function sucursales() {
-        return $this->belongsToMany(Sucursal::class, 'producto_sucursal', 'producto_id', 'sucursal_id')
-                    ->withPivot('cantidad_fisica', 'cantidad_reservada')
-                    ->withTimestamps();
+    public function categoria() 
+    { 
+        return $this->belongsTo(Categoria::class, 'categoria_id'); 
     }
 
-    // Corregido: Especificamos las columnas para que no busque "branch_id"
-    public function branch_productos() {
-        return $this->belongsToMany(Sucursal::class, 'producto_sucursal', 'producto_id', 'sucursal_id')
-                    ->withPivot('cantidad_fisica', 'cantidad_reservada')
-                    ->withTimestamps();
+    public function marca() 
+    { 
+        return $this->belongsTo(Marca::class, 'marca_id'); 
     }
 
-    public function proveedor() { 
+    public function proveedor() 
+    { 
         return $this->belongsTo(Proveedor::class, 'proveedor_id'); 
+    }
+    
+    public function sucursales() 
+    {
+        return $this->belongsToMany(Sucursal::class, 'producto_sucursal', 'producto_id', 'sucursal_id')
+                    ->withPivot('cantidad_fisica', 'cantidad_reservada')
+                    ->withTimestamps();
     }
 }

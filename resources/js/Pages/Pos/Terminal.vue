@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import Swal from 'sweetalert2';
 
 const props = defineProps({
@@ -19,6 +19,7 @@ const metodoPago = ref('Efectivo');
 const clienteSeleccionado = ref(null); 
 const busquedaCliente = ref('');
 const mostrarDropdownClientes = ref(false);
+const inputBusqueda = ref(null);
 
 const clientesFiltradosSelect = computed(() => {
     if (!busquedaCliente.value) return props.clientes;
@@ -47,19 +48,137 @@ const productosFiltrados = computed(() => {
     );
 });
 
-const agregarAlCarrito = (producto) => {
-    const existe = carrito.value.find(item => item.id === producto.id);
-    if (existe) {
-        existe.cantidad++;
-    } else {
-        carrito.value.push({ ...producto, cantidad: 1 });
+// 🚀 LÓGICA DE CÓDIGO DE BARRAS Y PESO
+const procesarBusquedaEnter = () => {
+    const query = buscar.value.trim();
+    if (!query) return;
+
+    if (query.length === 13 && query.startsWith('20')) {
+        const pluBalanza = parseInt(query.substring(2, 6), 10).toString();
+        const pesoGramos = parseInt(query.substring(7, 12), 10);
+        const pesoKilos = pesoGramos / 1000;
+
+        const productoBalanza = props.productos.find(p => p.codigo_barras === pluBalanza);
+        
+        if (productoBalanza) {
+            agregarItemAlCarrito(productoBalanza, pesoKilos);
+            buscar.value = '';
+            return;
+        }
     }
-    buscar.value = '';
+
+    const exactMatch = props.productos.find(p => p.codigo_barras === query);
+    if (exactMatch) {
+        clickEnProducto(exactMatch);
+        return;
+    }
 };
 
-const incrementarCantidad = (index) => carrito.value[index].cantidad++;
-const decrementarCantidad = (index) => { if (carrito.value[index].cantidad > 1) carrito.value[index].cantidad--; };
-const validarCantidad = (index) => { if (!carrito.value[index].cantidad || carrito.value[index].cantidad <= 0) carrito.value[index].cantidad = 1; };
+const clickEnProducto = async (producto) => {
+    if (producto.unidad_medida === 'Kg') {
+        const { value: formValues } = await Swal.fire({
+            title: 'Ingresar Cantidad',
+            html: `
+                <div class="mb-4 text-slate-500 font-bold text-sm">Estás vendiendo: <span class="text-sky-600">${producto.nombre}</span></div>
+                <div class="text-[10px] text-amber-600 font-black mb-2 uppercase tracking-widest">Stock Disponible: ${producto.stock_actual} kg</div>
+                <div class="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                    <input id="swal-peso" type="number" step="0.001" min="0.001" class="w-32 border-slate-300 rounded-xl text-center text-xl font-black text-slate-800 focus:ring-sky-500 focus:border-sky-500" placeholder="Ej: 250">
+                    <select id="swal-unidad" class="w-32 border-slate-300 rounded-xl text-slate-700 font-bold text-lg bg-slate-50 focus:ring-sky-500 focus:border-sky-500">
+                        <option value="Gramos" selected>Gramos</option>
+                        <option value="Kg">Kilos</option>
+                    </select>
+                </div>
+            `,
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonText: 'Agregar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#0284c7',
+            didOpen: () => { document.getElementById('swal-peso').focus() },
+            preConfirm: () => {
+                const peso = parseFloat(document.getElementById('swal-peso').value);
+                const unidad = document.getElementById('swal-unidad').value;
+                const cantCalculada = unidad === 'Gramos' ? peso / 1000 : peso;
+
+                if (!peso || peso <= 0) {
+                    Swal.showValidationMessage('Ingresá una cantidad válida');
+                    return false;
+                }
+                
+                // 🛑 VALIDACIÓN STOCK EN MODAL
+                if (cantCalculada > producto.stock_actual) {
+                    Swal.showValidationMessage(`Stock insuficiente (Disponible: ${producto.stock_actual}kg)`);
+                    return false;
+                }
+
+                return { cantCalculada };
+            }
+        });
+
+        if (formValues) {
+            agregarItemAlCarrito(producto, formValues.cantCalculada);
+            buscar.value = '';
+        }
+    } else {
+        agregarItemAlCarrito(producto, 1);
+        buscar.value = '';
+    }
+    
+    nextTick(() => { if (inputBusqueda.value) inputBusqueda.value.focus(); });
+};
+
+const agregarItemAlCarrito = (producto, cantidadAgregada) => {
+    const existe = carrito.value.find(item => item.id === producto.id);
+    const nuevaCantidad = existe ? existe.cantidad + cantidadAgregada : cantidadAgregada;
+
+    // 🛑 VALIDACIÓN STOCK AL AGREGAR
+    if (nuevaCantidad > producto.stock_actual) {
+        Swal.fire('Stock Insuficiente', `Solo hay ${producto.stock_actual} disponibles.`, 'warning');
+        return;
+    }
+
+    if (existe) {
+        existe.cantidad = nuevaCantidad;
+    } else {
+        carrito.value.push({ ...producto, cantidad: cantidadAgregada });
+    }
+};
+
+const incrementarCantidad = (index) => {
+    const item = carrito.value[index];
+    const isKg = item.unidad_medida === 'Kg';
+    const incremento = isKg ? 0.1 : 1;
+    
+    // 🛑 VALIDACIÓN STOCK BOTÓN +
+    if (item.cantidad + incremento > item.stock_actual) {
+        Swal.fire({ title: 'Límite de Stock', text: `No podés agregar más de ${item.stock_actual}`, icon: 'info', timer: 1500, showConfirmButton: false });
+        return;
+    }
+    
+    item.cantidad += incremento;
+};
+
+const decrementarCantidad = (index) => { 
+    const isKg = carrito.value[index].unidad_medida === 'Kg';
+    const resta = isKg ? 0.1 : 1;
+    if (carrito.value[index].cantidad > resta) {
+        carrito.value[index].cantidad -= resta; 
+    }
+};
+
+const validarCantidad = (index) => { 
+    const item = carrito.value[index];
+    if (!item.cantidad || item.cantidad <= 0) {
+        item.cantidad = item.unidad_medida === 'Kg' ? 0.1 : 1; 
+    } 
+
+    // 🛑 VALIDACIÓN STOCK INPUT MANUAL
+    if (item.cantidad > item.stock_actual) {
+        item.cantidad = item.stock_actual;
+        Swal.fire('Stock Ajustado', 'Se ajustó a la disponibilidad máxima.', 'warning');
+    }
+};
+
 const eliminarDelCarrito = (index) => carrito.value.splice(index, 1);
 
 const totalVenta = computed(() => {
@@ -71,6 +190,7 @@ const finalizarVenta = () => {
     
     Swal.fire({
         title: 'Procesando cobro...',
+        text: 'Registrando salida de stock...',
         didOpen: () => { Swal.showLoading() },
         allowOutsideClick: false
     });
@@ -82,23 +202,26 @@ const finalizarVenta = () => {
         total: totalVenta.value,
         metodo_pago: metodoPago.value
     }, {
-        // ELIMINÉ EL onFinish PARA QUE NO TE CIERRE EL CARTEL ANTES DE TIEMPO
         onSuccess: () => {
             carrito.value = [];
             clienteSeleccionado.value = null;
+            buscar.value = '';
             Swal.fire({
                 icon: 'success',
-                title: '¡Venta Exitosa!',
-                text: 'El ticket se registró y la caja sumó el ingreso.',
-                timer: 2500
+                title: '¡Venta Registrada!',
+                text: 'El ticket se procesó correctamente.',
+                timer: 2000,
+                showConfirmButton: false
             });
+            nextTick(() => { if (inputBusqueda.value) inputBusqueda.value.focus(); });
         },
         onError: (errors) => {
             console.error(errors);
             Swal.fire({
                 icon: 'error',
                 title: 'Error al cobrar',
-                text: errors.error || 'Ocurrió un problema validando la venta.',
+                text: errors.error || 'Verificá que haya stock suficiente y reintentá.',
+                confirmButtonColor: '#ef4444'
             });
         }
     });
@@ -106,57 +229,70 @@ const finalizarVenta = () => {
 </script>
 
 <template>
-    <Head title="Caja Registradora - VendAR" />
+    <Head title="Terminal POS - Kiosco" />
 
     <AuthenticatedLayout>
-        <div class="py-6 px-4 sm:px-6 lg:px-8 bg-slate-50 min-h-screen" @click="mostrarDropdownClientes = false">
+        <div class="py-6 px-4 sm:px-6 lg:px-8 bg-slate-100 min-h-screen" @click="mostrarDropdownClientes = false">
             
-            <div class="mb-8 flex justify-between items-end">
+            <div class="mb-6 flex justify-between items-end">
                 <div>
                     <div class="flex items-center gap-3 mb-2">
-                        <span class="bg-sky-100 text-sky-800 text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-widest border border-sky-200">
+                        <span class="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-widest border border-indigo-200">
                             {{ turno.caja.nombre }}
                         </span>
                         <span class="text-xs font-bold text-slate-500">
                             Sucursal: {{ turno.caja.sucursal.nombre }}
                         </span>
                     </div>
-                    <h1 class="text-2xl font-black text-slate-800 uppercase tracking-tight">Terminal de Venta</h1>
+                    <h1 class="text-2xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                        Punto de Venta
+                    </h1>
                 </div>
             </div>
 
             <div class="grid grid-cols-12 gap-6">
-                <div class="col-span-12 lg:col-span-8 space-y-6">
-                    <div class="bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
-                        <div class="relative">
-                            <span class="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-400">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <div class="col-span-12 lg:col-span-8 flex flex-col gap-6">
+                    
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 focus-within:border-sky-500 focus-within:ring-4 focus-within:ring-sky-500/20 transition-all overflow-hidden">
+                        <div class="relative flex items-center">
+                            <span class="absolute left-4 text-slate-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
                             </span>
                             <input 
+                                ref="inputBusqueda"
                                 v-model="buscar"
+                                @keyup.enter="procesarBusquedaEnter"
                                 type="text" 
-                                placeholder="Escaneá código de barras o buscá por nombre..."
-                                class="block w-full pl-12 pr-4 py-4 bg-transparent border-none focus:ring-0 text-lg font-medium text-slate-700"
+                                placeholder="Escaneá código (Unidad o Balanza) o buscá por nombre..."
+                                class="w-full pl-16 pr-4 py-5 bg-transparent border-none focus:ring-0 text-xl font-bold text-slate-800 placeholder-slate-400"
                                 autofocus
                             />
+                            <div class="absolute right-4 px-2 py-1 bg-slate-100 rounded text-[10px] font-bold text-slate-400 uppercase border border-slate-200">
+                                ENTER ↵
+                            </div>
                         </div>
                     </div>
 
                     <div v-if="productosFiltrados.length > 0" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                         <div 
                             v-for="p in productosFiltrados" :key="p.id"
-                            @click="agregarAlCarrito(p)"
-                            class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 hover:border-sky-500 hover:shadow-md transition-all cursor-pointer group"
+                            @click="clickEnProducto(p)"
+                            class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 hover:border-sky-500 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group relative overflow-hidden"
                         >
+                            <div class="absolute top-0 right-0 px-2 py-1 rounded-bl-xl text-[10px] font-black uppercase tracking-widest" :class="p.stock_actual <= 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'">
+                                Stock: {{ p.stock_actual }}
+                            </div>
+
                             <div class="flex items-center gap-4">
-                                <div class="w-16 h-16 bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center border border-slate-50">
+                                <div class="w-16 h-16 bg-slate-50 rounded-xl overflow-hidden flex items-center justify-center border border-slate-100 shrink-0">
                                     <img v-if="p.imagen" :src="'/storage/' + p.imagen" class="w-full h-full object-cover" />
                                     <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
                                 </div>
                                 <div>
-                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">{{ p.codigo_barras || 'SIN CÓDIGO' }}</p>
-                                    <p class="font-bold text-slate-800 leading-tight group-hover:text-sky-600 transition-colors">{{ p.nombre }}</p>
-                                    <p class="text-sky-600 font-black mt-1 text-lg">${{ p.precio_venta }}</p>
+                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{{ p.codigo_barras || 'SIN CÓDIGO' }}</p>
+                                    <p class="font-bold text-slate-800 leading-tight group-hover:text-sky-600 transition-colors line-clamp-2">{{ p.nombre }}</p>
+                                    <p class="text-sky-600 font-black mt-1 text-lg">${{ p.precio_venta }}<span v-if="p.unidad_medida === 'Kg'" class="text-xs text-slate-400">/kg</span></p>
                                 </div>
                             </div>
                         </div>
@@ -164,43 +300,47 @@ const finalizarVenta = () => {
                 </div>
 
                 <div class="col-span-12 lg:col-span-4">
-                    <div class="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col h-[calc(100vh-180px)] sticky top-6">
-                        <div class="p-6 border-b border-slate-50 flex flex-col gap-3">
+                    <div class="bg-white rounded-3xl shadow-2xl shadow-slate-200/50 flex flex-col h-[calc(100vh-140px)] sticky top-6 border border-slate-200 overflow-hidden">
+                        
+                        <div class="p-5 border-b border-dashed border-slate-300 bg-slate-50 flex flex-col gap-4">
                             <div class="flex justify-between items-center relative" @click.stop>
-                                <h2 class="text-xl font-black text-slate-800 flex items-center gap-2">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
-                                    Ticket
+                                <h2 class="text-lg font-black text-slate-800 flex items-center gap-2 uppercase tracking-widest">
+                                    TICKET #---
                                 </h2>
                                 
                                 <div class="relative w-48">
                                     <div 
                                         @click="mostrarDropdownClientes = !mostrarDropdownClientes"
-                                        class="bg-slate-100 px-3 py-2 rounded-lg text-xs font-bold text-slate-700 cursor-pointer flex justify-between items-center border border-slate-200 hover:border-sky-300 transition-colors"
+                                        class="bg-white px-3 py-2 rounded-xl text-xs font-bold text-slate-700 cursor-pointer flex justify-between items-center border border-slate-200 hover:border-sky-400 transition-colors shadow-sm"
                                     >
-                                        <span class="truncate">{{ clienteActivoObj ? clienteActivoObj.nombre : 'Consumidor Final' }}</span>
+                                        <span class="truncate flex items-center gap-2">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-sky-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" /></svg>
+                                            {{ clienteActivoObj ? clienteActivoObj.nombre : 'C. Final' }}
+                                        </span>
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
                                     </div>
                                     
-                                    <div v-if="mostrarDropdownClientes" class="absolute right-0 top-full mt-1 w-64 bg-white border border-slate-200 shadow-2xl rounded-xl z-50 overflow-hidden">
-                                        <div class="p-2 border-b border-slate-100">
+                                    <div v-if="mostrarDropdownClientes" class="absolute right-0 top-full mt-2 w-64 bg-white border border-slate-200 shadow-xl rounded-2xl z-50 overflow-hidden">
+                                        <div class="p-3 border-b border-slate-100 bg-slate-50">
                                             <input 
                                                 v-model="busquedaCliente" 
                                                 type="text" 
                                                 placeholder="Buscar cliente..." 
-                                                class="w-full text-xs font-bold border-slate-200 rounded-md focus:ring-sky-500 focus:border-sky-500 py-1.5"
+                                                class="w-full text-xs font-bold border-slate-200 rounded-lg focus:ring-sky-500 focus:border-sky-500 py-2"
                                             >
                                         </div>
-                                        <ul class="max-h-48 overflow-y-auto">
+                                        <ul class="max-h-56 overflow-y-auto">
                                             <li 
                                                 @click="seleccionarCliente(null)" 
-                                                class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50 hover:text-sky-700 cursor-pointer border-b border-slate-50"
+                                                class="px-4 py-3 text-xs font-bold text-slate-600 hover:bg-sky-50 hover:text-sky-700 cursor-pointer border-b border-slate-50 flex items-center gap-2"
                                             >
-                                                [ Consumidor Final ]
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                                Consumidor Final
                                             </li>
                                             <li 
                                                 v-for="c in clientesFiltradosSelect" :key="c.id"
                                                 @click="seleccionarCliente(c)"
-                                                class="px-4 py-2 text-xs font-medium text-slate-700 hover:bg-sky-50 hover:text-sky-700 cursor-pointer border-b border-slate-50"
+                                                class="px-4 py-3 text-xs font-medium text-slate-700 hover:bg-sky-50 hover:text-sky-700 cursor-pointer border-b border-slate-50"
                                             >
                                                 {{ c.nombre }}
                                             </li>
@@ -209,72 +349,81 @@ const finalizarVenta = () => {
                                 </div>
                             </div>
                             
-                            <div class="flex gap-2 mt-2">
+                            <div class="flex gap-2">
                                 <label class="flex-1 cursor-pointer">
                                     <input type="radio" v-model="metodoPago" value="Efectivo" class="peer sr-only">
-                                    <div class="text-center px-2 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider border-2 peer-checked:border-sky-500 peer-checked:bg-sky-50 peer-checked:text-sky-700 text-slate-400 transition-all">Efectivo</div>
+                                    <div class="text-center px-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border-2 peer-checked:border-emerald-500 peer-checked:bg-emerald-50 peer-checked:text-emerald-700 text-slate-400 bg-white hover:bg-slate-50 transition-all flex flex-col items-center gap-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                                        Efectivo
+                                    </div>
                                 </label>
                                 <label class="flex-1 cursor-pointer">
                                     <input type="radio" v-model="metodoPago" value="Débito" class="peer sr-only">
-                                    <div class="text-center px-2 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider border-2 peer-checked:border-sky-500 peer-checked:bg-sky-50 peer-checked:text-sky-700 text-slate-400 transition-all">Tarj / Transf</div>
+                                    <div class="text-center px-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border-2 peer-checked:border-sky-500 peer-checked:bg-sky-50 peer-checked:text-sky-700 text-slate-400 bg-white hover:bg-slate-50 transition-all flex flex-col items-center gap-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                                        Digital
+                                    </div>
                                 </label>
                                 <label class="flex-1 cursor-pointer">
                                     <input type="radio" v-model="metodoPago" value="Cuenta Corriente" class="peer sr-only">
-                                    <div class="text-center px-2 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider border-2 peer-checked:border-rose-500 peer-checked:bg-rose-50 peer-checked:text-rose-700 text-slate-400 transition-all">Fiado (CC)</div>
+                                    <div class="text-center px-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border-2 peer-checked:border-amber-500 peer-checked:bg-amber-50 peer-checked:text-amber-700 text-slate-400 bg-white hover:bg-slate-50 transition-all flex flex-col items-center gap-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                        Fiado
+                                    </div>
                                 </label>
                             </div>
                         </div>
 
-                        <div class="flex-1 overflow-y-auto p-4 space-y-4">
-                            <div v-if="carrito.length === 0" class="h-full flex flex-col items-center justify-center text-slate-300">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                                <p class="font-bold">Sin productos</p>
+                        <div class="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+                            
+                            <div v-if="carrito.length === 0" class="h-full flex flex-col items-center justify-center text-slate-300 opacity-70">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
+                                <p class="font-bold text-lg">Ticket Vacío</p>
                             </div>
 
-                            <div v-for="(item, index) in carrito" :key="item.id" class="flex flex-col gap-2 p-3 bg-white border border-slate-100 rounded-xl shadow-sm group">
-                                <div class="flex justify-between items-start">
-                                    <span class="font-bold text-slate-700 text-sm leading-tight pr-2">{{ item.nombre }}</span>
-                                    <button @click="eliminarDelCarrito(index)" class="text-slate-300 hover:text-rose-500 transition-colors">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>
-                                    </button>
+                            <div v-for="(item, index) in carrito" :key="item.id" class="flex flex-col p-3 bg-white border border-slate-200 rounded-2xl shadow-sm relative group hover:border-sky-200 transition-colors">
+                                
+                                <div class="flex justify-between items-start mb-2">
+                                    <div class="pr-6">
+                                        <span class="font-bold text-slate-800 text-sm block">{{ item.nombre }}</span>
+                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${{ item.precio_venta }} · Stock: {{ item.stock_actual }}</span>
+                                    </div>
+                                    <button @click="eliminarDelCarrito(index)" class="absolute top-3 right-3 text-slate-300 hover:text-rose-500 transition-colors">✕</button>
                                 </div>
                                 
-                                <div class="flex justify-between items-center mt-1">
-                                    <div class="flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200">
-                                        <button @click="decrementarCantidad(index)" type="button" class="w-7 h-7 flex items-center justify-center bg-white rounded shadow-sm text-slate-500 hover:text-sky-600 transition-colors">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" /></svg>
-                                        </button>
-                                        <input 
-                                            type="number" step="0.001"
-                                            v-model.number="item.cantidad" 
-                                            @blur="validarCantidad(index)"
-                                            class="w-14 text-center bg-transparent border-none text-xs font-black p-0 focus:ring-0 text-slate-800"
-                                        >
-                                        <button @click="incrementarCantidad(index)" type="button" class="w-7 h-7 flex items-center justify-center bg-white rounded shadow-sm text-slate-500 hover:text-sky-600 transition-colors">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
-                                        </button>
+                                <div class="flex justify-between items-end mt-1">
+                                    <div class="flex items-center bg-slate-50 rounded-xl p-1 border border-slate-200">
+                                        <button @click="decrementarCantidad(index)" type="button" class="w-8 h-8 flex items-center justify-center bg-white rounded-lg shadow-sm">−</button>
+                                        <div class="flex flex-col items-center justify-center px-1">
+                                            <input 
+                                                type="number" step="0.001"
+                                                v-model.number="item.cantidad" 
+                                                @blur="validarCantidad(index)"
+                                                class="w-16 text-center bg-transparent border-none text-sm font-black p-0 focus:ring-0 text-sky-700"
+                                            >
+                                        </div>
+                                        <button @click="incrementarCantidad(index)" type="button" class="w-8 h-8 flex items-center justify-center bg-white rounded-lg shadow-sm">+</button>
                                     </div>
-                                    <div class="flex flex-col text-right">
-                                        <span class="text-[10px] text-slate-400 font-bold uppercase">${{ item.precio_venta }} c/u</span>
-                                        <span class="font-black text-slate-800">${{ (item.cantidad * item.precio_venta).toFixed(2) }}</span>
+                                    
+                                    <div class="text-right">
+                                        <span class="font-black text-slate-800 text-lg">${{ (item.cantidad * item.precio_venta).toFixed(2) }}</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="p-6 bg-slate-50 rounded-b-3xl border-t border-slate-100">
-                            <div class="flex justify-between items-center mb-6">
-                                <span class="text-slate-400 font-black uppercase tracking-widest text-[10px]">Total a cobrar</span>
-                                <span class="text-4xl font-black text-slate-900 tracking-tighter">${{ totalVenta.toFixed(2) }}</span>
+                        <div class="p-5 bg-white border-t border-dashed border-slate-300">
+                            <div class="flex justify-between items-end mb-4">
+                                <span class="text-slate-400 font-black uppercase tracking-widest text-xs">Total</span>
+                                <span class="text-4xl font-black text-slate-900 tracking-tighter leading-none">${{ totalVenta.toFixed(2) }}</span>
                             </div>
 
                             <button 
                                 @click="finalizarVenta"
                                 :disabled="carrito.length === 0"
-                                class="w-full bg-sky-600 hover:bg-sky-700 disabled:bg-slate-300 text-white font-black py-4 rounded-2xl shadow-lg shadow-sky-600/30 transition-all uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95"
+                                class="w-full bg-slate-900 hover:bg-sky-600 disabled:bg-slate-200 text-white font-black py-4 rounded-2xl shadow-xl uppercase tracking-widest active:scale-95"
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                                Cobrar
+                                Cobrar Ticket
                             </button>
                         </div>
                     </div>

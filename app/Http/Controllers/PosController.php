@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Caja;
 use App\Models\TurnoCaja;
+use App\Models\Producto;
+use App\Models\Consumidor;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -11,7 +13,7 @@ use Carbon\Carbon;
 class PosController extends Controller
 {
     // Esta es la puerta de entrada al POS
-   public function index(Request $request)
+    public function index(Request $request)
     {
         $user = auth()->user();
 
@@ -20,25 +22,31 @@ class PosController extends Controller
             ->where('estado', 'Abierto')
             ->first();
 
-        // 2. Si ya tiene turno, lo mandamos a vender (A la Terminal que acabamos de arreglar)
+        // 2. Si ya tiene turno, lo mandamos a vender
         if ($turnoAbierto) {
             $sucursalId = $user->branch_id ?? 1;
 
+            $productos = Producto::where('estado', true)
+                ->select('id', 'nombre', 'codigo_barras', 'precio_venta', 'imagen', 'unidad_medida')
+                ->with(['sucursales' => function($q) use ($sucursalId) {
+                    $q->where('sucursal_id', $sucursalId);
+                }])
+                ->get()
+                ->map(function($p) {
+                    // 🚀 MAGIA: Seteamos el stock actual de forma plana para el frontend
+                    $pivot = $p->sucursales->first();
+                    $p->stock_actual = $pivot ? (float)$pivot->pivot->cantidad_fisica : 0;
+                    return $p;
+                });
+
             return Inertia::render('Pos/Terminal', [
                 'turno' => $turnoAbierto->load('caja.sucursal'),
-                // Mandamos los productos con stock en esa sucursal
-                'productos' => \App\Models\Producto::where('estado', true)
-                    ->select('id', 'nombre', 'codigo_barras', 'precio_venta', 'imagen')
-                    ->with(['sucursales' => function($q) use ($sucursalId) {
-                        $q->where('sucursal_id', $sucursalId);
-                    }])
-                    ->get(),
-                // Mandamos los clientes por si quiere fiar
-                'clientes' => \App\Models\Consumidor::all()
+                'productos' => $productos,
+                'clientes' => Consumidor::all()
             ]);
         }
 
-        // 3. Si NO tiene turno... (El resto del código de AperturaTurno queda igual)
+        // 3. Si NO tiene turno...
         $cajasDisponibles = Caja::where('sucursal_id', $user->branch_id ?? 1)
             ->where('estado', true)
             ->get();

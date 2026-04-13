@@ -102,11 +102,13 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global|Cajero|Encargad
     Route::put('/clientes/{consumidor}', [ConsumidorController::class, 'update'])->name('consumidores.update');
     Route::post('/consumidores/{consumidor}/cobrar', [ConsumidorController::class, 'cobrarDeuda'])->name('consumidores.cobrar');
 
+    // Productos (Rutas unificadas para evitar conflictos)
     Route::get('/productos', [ProductoController::class, 'index'])->name('productos.index');
     Route::post('/productos', [ProductoController::class, 'store'])->name('productos.store');
-    Route::patch('/productos/{producto}/status', [ProductoController::class, 'status'])->name('productos.status');
     Route::post('/productos/{producto}', [ProductoController::class, 'update'])->name('productos.update');
+    Route::patch('/productos/{producto}/status', [ProductoController::class, 'status'])->name('productos.status');
     
+    // Catálogo General
     Route::get('/categorias', [CategoriaController::class, 'index'])->name('categorias.index');
     Route::post('/categorias', [CategoriaController::class, 'store'])->name('categorias.store');
     Route::put('/categorias/{categoria}', [CategoriaController::class, 'update'])->name('categorias.update');
@@ -128,26 +130,12 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global|Cajero|Encargad
 // --- ZONA DE GESTIÓN (Solo Admins y Encargados) ---
 Route::middleware(['auth', 'role:SuperAdmin|Administrador Global|Encargado'])->group(function () {
     
-    // Stock e Ingresos
-    Route::get('/ingresos', [IngresoMercaderiaController::class, 'index'])->name('ingresos.index');
-    Route::post('/ingresos', [IngresoMercaderiaController::class, 'store'])->name('ingresos.store');
-    
-    // Catálogo
-    Route::resource('categorias', CategoriaController::class);
-    Route::resource('marcas', MarcaController::class);
-    Route::resource('proveedores', ProveedorController::class);
-    
-    // Edición de Productos
-    Route::post('/productos', [ProductoController::class, 'store'])->name('productos.store');
-    Route::post('/productos/{producto}', [ProductoController::class, 'update'])->name('productos.update');
-    Route::patch('/productos/{producto}/status', [ProductoController::class, 'status'])->name('productos.status');
+    // Gestión de Stock específica
+    Route::post('/productos/{producto}/ajuste-stock', [ProductoController::class, 'ajustarStock'])->name('productos.ajustar');
+    Route::get('/productos/{producto}/auditoria', [ProductoController::class, 'auditoria'])->name('productos.auditoria');
 
-    Route::post('/productos/{producto}/ajuste-stock', [App\Http\Controllers\ProductoController::class, 'ajustarStock'])->name('productos.ajustar');
-    Route::get('/productos/{producto}/auditoria', [App\Http\Controllers\ProductoController::class, 'auditoria'])->name('productos.auditoria');
-
-    // Transferencias
-    Route::get('/transferencias-sugeridas', [TransferenciaSugeridaController::class, 'index'])->name('transferencias.index');
-    Route::post('/transferencias-sugeridas/{transferencia}/aprobar', [TransferenciaSugeridaController::class, 'aprobar'])->name('transferencias.aprobar');
+    // Recursos
+    Route::resource('proveedores', ProveedorController::class)->except(['index', 'store', 'update']); // index/store/update ya definidos
 });
 
 // --- ZONA DE PODER ABSOLUTO (Solo Dueños y Devs) ---
@@ -159,10 +147,6 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global'])->group(funct
     Route::put('/sucursales/{sucursal}', [SucursalController::class, 'update'])->name('sucursales.update');
     Route::patch('/sucursales/{sucursal}/status', [SucursalController::class, 'status'])->name('sucursales.status');
 
-    Route::get('/clientes', [ConsumidorController::class, 'index'])->name('consumidores.index');
-    Route::post('/clientes', [ConsumidorController::class, 'store'])->name('consumidores.store');
-    Route::put('/clientes/{consumidor}', [ConsumidorController::class, 'update'])->name('consumidores.update');
-
     Route::get('/proveedores', [ProveedorController::class, 'index'])->name('proveedores.index');
     Route::post('/proveedores', [ProveedorController::class, 'store'])->name('proveedores.store');
     Route::put('/proveedores/{proveedore}', [ProveedorController::class, 'update'])->name('proveedores.update');
@@ -172,24 +156,19 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global'])->group(funct
     Route::resource('roles', RoleController::class);
     Route::resource('usuarios', UsuarioController::class);
 
-    // CRUD de Cajas Físicas
-    Route::resource('cajas', CajaController::class)->except(['create', 'show', 'edit']);
-    Route::patch('/cajas/{caja}/status', [CajaController::class, 'toggleEstado'])->name('cajas.status');
-    Route::post('/ventas/{venta}/cancelar', [VentaController::class, 'cancelar'])->name('ventas.cancelar'); 
-
     // Órdenes de Compra
     Route::resource('ordenes-compra', OrdenCompraController::class)->except(['create', 'show', 'edit', 'update']);
     Route::post('/ordenes-compra/sugerencias', [OrdenCompraController::class, 'generarSugerencias'])->name('ordenes-compra.sugerencias');
     Route::patch('/ordenes-compra/{ordenCompra}/estado', [OrdenCompraController::class, 'cambiarEstado'])->name('ordenes-compra.estado');
-    Route::post('/ordenes-compra/{ordenCompra}/aprobar', [App\Http\Controllers\OrdenCompraController::class, 'aprobarYRecibir'])->name('ordenes-compra.aprobar');
+    Route::post('/ordenes-compra/{ordenCompra}/aprobar', [OrdenCompraController::class, 'aprobarYRecibir'])->name('ordenes-compra.aprobar');
     Route::post('/ordenes-compra/{ordenCompra}/confirmar', [OrdenCompraController::class, 'confirmarPedido'])->name('ordenes-compra.confirmar');
     
     // Reposición
-    Route::get('/reposicion', [App\Http\Controllers\ReposicionController::class, 'index'])->name('reposicion.index');
-    Route::post('/reposicion/generar', [App\Http\Controllers\ReposicionController::class, 'generarPreOrdenes'])->name('reposicion.generar');
+    Route::get('/reposicion', [ReposicionController::class, 'index'])->name('reposicion.index');
+    Route::post('/reposicion/generar', [ReposicionController::class, 'generarPreOrdenes'])->name('reposicion.generar');
 
-    Route::get('/cotizar/{id}', [App\Http\Controllers\ReposicionController::class, 'verCotizacion'])->name('cotizar.ver');
-    Route::post('/cotizar/{id}', [App\Http\Controllers\ReposicionController::class, 'guardarCotizacion'])->name('cotizar.guardar');
+    Route::get('/cotizar/{id}', [ReposicionController::class, 'verCotizacion'])->name('cotizar.ver');
+    Route::post('/cotizar/{id}', [ReposicionController::class, 'guardarCotizacion'])->name('cotizar.guardar');
 });
 
 require __DIR__.'/auth.php';
