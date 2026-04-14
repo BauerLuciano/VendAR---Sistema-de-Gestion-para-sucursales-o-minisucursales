@@ -137,7 +137,7 @@ const guardar = () => {
 
                     <div class="col-span-1 md:col-span-6">
                         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Cód. Barras o PLU *</label>
-                        <input v-model="formulario.codigo_barras" type="text" minlength="2" maxlength="14" @input="formulario.codigo_barras = formulario.codigo_barras.replace(/[^0-9]/g, '')" class="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl px-4 py-2.5 font-mono focus:bg-white focus:ring-2 focus:ring-sky-500 transition-colors" :class="{'border-rose-500': formulario.errors.codigo_barras}" placeholder="Ej: 7791234 o PLU (15)" required>
+                        <input v-model="formulario.codigo_barras" type="text" minlength="2" maxlength="13" @input="formulario.codigo_barras = formulario.codigo_barras.replace(/[^0-9]/g, '')" class="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl px-4 py-2.5 font-mono focus:bg-white focus:ring-2 focus:ring-sky-500 transition-colors" :class="{'border-rose-500': formulario.errors.codigo_barras}" placeholder="Ej: 7791237290126 o PLU (15)" required>
                         <p v-if="formulario.errors.codigo_barras" class="text-rose-500 text-xs mt-1 font-medium">{{ formulario.errors.codigo_barras }}</p>
                     </div>
 
