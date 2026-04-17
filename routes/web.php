@@ -159,6 +159,11 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global'])->group(funct
 
     // Seguridad y Usuarios
     Route::resource('roles', RoleController::class);
+    
+    // 🔥 RUTAS MANUALES PARA PERMISOS (Agregadas)
+    Route::post('/permisos', [RoleController::class, 'storePermiso'])->name('permisos.store');
+    Route::put('/permisos/{permiso}', [RoleController::class, 'updatePermiso'])->name('permisos.update');
+
     Route::resource('usuarios', UsuarioController::class);
 
     // Órdenes de Compra
