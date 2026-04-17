@@ -162,6 +162,11 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global'])->group(funct
 
     // Seguridad y Usuarios
     Route::resource('roles', RoleController::class);
+    
+    // 🔥 RUTAS MANUALES PARA PERMISOS (Agregadas)
+    Route::post('/permisos', [RoleController::class, 'storePermiso'])->name('permisos.store');
+    Route::put('/permisos/{permiso}', [RoleController::class, 'updatePermiso'])->name('permisos.update');
+
     Route::resource('usuarios', UsuarioController::class);
 
     // Órdenes de Compra
@@ -177,6 +182,10 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global'])->group(funct
 
     Route::get('/cotizar/{id}', [ReposicionController::class, 'verCotizacion'])->name('cotizar.ver');
     Route::post('/cotizar/{id}', [ReposicionController::class, 'guardarCotizacion'])->name('cotizar.guardar');
+
+    // Configuraciones Generales
+    Route::get('/configuracion', [\App\Http\Controllers\ConfiguracionController::class, 'index'])->name('configuracion.index');
+    Route::post('/configuracion', [\App\Http\Controllers\ConfiguracionController::class, 'update'])->name('configuracion.update');
 });
 
 require __DIR__.'/auth.php';
