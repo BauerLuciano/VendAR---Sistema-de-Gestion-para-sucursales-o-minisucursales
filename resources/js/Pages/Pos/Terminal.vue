@@ -12,6 +12,13 @@ const props = defineProps({
 
 const page = usePage();
 
+// 🔥 NUEVO: Detectamos si la configuración permite stock negativo
+// Chequeamos si es "1", 1 o true, dependiendo de cómo se guarde en la DB
+const permitirStockNegativo = computed(() => {
+    const val = page.props.empresa?.permitir_stock_negativo;
+    return val === '1' || val === 1 || val === true;
+});
+
 const buscar = ref('');
 const carrito = ref([]);
 const metodoPago = ref('Efectivo'); 
@@ -123,7 +130,8 @@ const clickEnProducto = async (producto) => {
                     return false;
                 }
                 
-                if (cantCalculada > producto.stock_actual) {
+                // 🔥 MODIFICADO: Solo frena si no hay stock Y no se permite negativo
+                if (cantCalculada > producto.stock_actual && !permitirStockNegativo.value) {
                     Swal.showValidationMessage(`Stock insuficiente (Disponible: ${producto.stock_actual}kg)`);
                     return false;
                 }
@@ -148,7 +156,8 @@ const agregarItemAlCarrito = (producto, cantidadAgregada) => {
     const existe = carrito.value.find(item => item.id === producto.id);
     const nuevaCantidad = existe ? existe.cantidad + cantidadAgregada : cantidadAgregada;
 
-    if (nuevaCantidad > producto.stock_actual) {
+    // 🔥 MODIFICADO: Bypass de stock si se permite negativo
+    if (nuevaCantidad > producto.stock_actual && !permitirStockNegativo.value) {
         Swal.fire('Stock Insuficiente', `Solo hay ${producto.stock_actual} disponibles.`, 'warning');
         return;
     }
@@ -165,7 +174,8 @@ const incrementarCantidad = (index) => {
     const isKg = item.unidad_medida === 'Kg';
     const incremento = isKg ? 0.1 : 1;
     
-    if (item.cantidad + incremento > item.stock_actual) {
+    // 🔥 MODIFICADO: Bypass de stock si se permite negativo
+    if (item.cantidad + incremento > item.stock_actual && !permitirStockNegativo.value) {
         Swal.fire({ title: 'Límite de Stock', text: `No podés agregar más de ${item.stock_actual}`, icon: 'info', timer: 1500, showConfirmButton: false });
         return;
     }
@@ -187,7 +197,8 @@ const validarCantidad = (index) => {
         item.cantidad = item.unidad_medida === 'Kg' ? 0.1 : 1; 
     } 
 
-    if (item.cantidad > item.stock_actual) {
+    // 🔥 MODIFICADO: Bypass de stock si se permite negativo
+    if (item.cantidad > item.stock_actual && !permitirStockNegativo.value) {
         item.cantidad = item.stock_actual;
         Swal.fire('Stock Ajustado', 'Se ajustó a la disponibilidad máxima.', 'warning');
     }
@@ -217,10 +228,27 @@ const finalizarVenta = () => {
         total: totalVenta.value,
         metodo_pago: metodoPago.value
     }, {
-        onSuccess: () => {
+        onSuccess: (page) => {
+            // 🕵️‍♂️ DEBUG LOGS:
+            console.log("--- RESPUESTA DEL SERVIDOR ---");
+            console.log("Flash completo:", page.props.flash);
+            
+            const ventaId = page.props.flash.venta_id;
+            console.log("ID de venta capturado:", ventaId);
+
+            if (ventaId) {
+                console.log("Intentando abrir ticket para ID:", ventaId);
+                // Abrimos el ticket en una pestaña pequeña independiente
+                window.open(route('ventas.imprimir', ventaId), '_blank', 'width=450,height=600');
+            } else {
+                console.error("ERROR: No se recibió venta_id. Revisá HandleInertiaRequests.php y el VentaController.");
+            }
+
+            // Limpieza del POS
             carrito.value = [];
             clienteSeleccionado.value = null;
             buscar.value = '';
+            
             Swal.fire({
                 icon: 'success',
                 title: '¡Venta Registrada!',
@@ -228,10 +256,11 @@ const finalizarVenta = () => {
                 timer: 2000,
                 showConfirmButton: false
             });
+
             nextTick(() => { if (inputBusqueda.value) inputBusqueda.value.focus(); });
         },
         onError: (errors) => {
-            console.error(errors);
+            console.error("Errores detectados:", errors);
             Swal.fire({
                 icon: 'error',
                 title: 'Error al cobrar',

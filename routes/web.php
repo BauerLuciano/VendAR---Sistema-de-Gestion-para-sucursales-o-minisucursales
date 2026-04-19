@@ -20,6 +20,8 @@ use App\Http\Controllers\{
     OrdenCompraController,
     ReposicionController,
     GlobalAdminController,
+    ConfiguracionController,
+    TicketController,
 };
 use App\Models\CuentaCorriente;
 use App\Http\Controllers\Auth\GoogleLoginController;
@@ -38,7 +40,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    // Perfil (Todos pueden editar su propia cuenta)
+    // Perfil
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
@@ -61,6 +63,7 @@ Route::post('/cajas', [CajaController::class, 'store'])->name('cajas.store');
 Route::put('/cajas/{caja}', [CajaController::class, 'update'])->name('cajas.update');
 Route::patch('/cajas/{caja}/estado', [CajaController::class, 'toggleEstado'])->name('cajas.estado');
 Route::delete('/cajas/{caja}', [CajaController::class, 'destroy'])->name('cajas.destroy');
+Route::get('/ventas/{venta}/imprimir', [TicketController::class, 'imprimir'])->name('ventas.imprimir');
 
 Route::get('/caja-diaria', function () {
     return Inertia::render('CajaDiaria/Index'); 
@@ -98,15 +101,13 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global|Cajero|Encargad
     Route::post('/consumidores/{consumidor}/cobrar', [ConsumidorController::class, 'cobrarDeuda'])->name('consumidores.cobrar');
     Route::patch('/consumidores/{consumidor}/status', [ConsumidorController::class, 'status'])->name('consumidores.status');
     Route::get('/consumidores/{consumidor}/cuenta', [ConsumidorController::class, 'estadoCuenta'])->name('consumidores.cuenta');
-    
-    // 👇 NUEVA RUTA PARA VERIFICAR DISPONIBILIDAD DEL DNI EN TIEMPO REAL
     Route::get('/consumidores/check-documento', [ConsumidorController::class, 'checkDocumento'])->name('consumidores.checkDocumento');
 
-    Route::get('/productos/generar-plu', [\App\Http\Controllers\ProductoController::class, 'generarPlu'])->name('productos.generar-plu');
     Route::get('/productos', [ProductoController::class, 'index'])->name('productos.index');
     Route::post('/productos', [ProductoController::class, 'store'])->name('productos.store');
     Route::post('/productos/{producto}', [ProductoController::class, 'update'])->name('productos.update');
     Route::patch('/productos/{producto}/status', [ProductoController::class, 'status'])->name('productos.status');
+    Route::get('/productos/generar-plu', [ProductoController::class, 'generarPlu'])->name('productos.generar-plu');
     
     Route::get('/categorias', [CategoriaController::class, 'index'])->name('categorias.index');
     Route::post('/categorias', [CategoriaController::class, 'store'])->name('categorias.store');
@@ -119,8 +120,9 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global|Cajero|Encargad
     Route::post('/marcas/{marca}', [MarcaController::class, 'update'])->name('marcas.update');
     Route::patch('/marcas/{marca}/status', [MarcaController::class, 'status'])->name('marcas.status');
 
+    // 🔥 TARJETA 2: Transferencias Sugeridas
     Route::get('/transferencias-sugeridas', [TransferenciaSugeridaController::class, 'index'])->name('transferencias.index');
-    Route::post('/transferencias-sugeridas/{transferencia}/aprobar', [TransferenciaSugeridaController::class, 'aprobar'])->name('transferencias.aprobar');
+    Route::post('/transferencias-sugeridas/aprobar', [TransferenciaSugeridaController::class, 'aprobar'])->name('transferencias.aprobar');
 
     Route::get('/ingresos', [IngresoMercaderiaController::class, 'index'])->name('ingresos.index');
     Route::post('/ingresos', [IngresoMercaderiaController::class, 'store'])->name('ingresos.store');
@@ -164,23 +166,18 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global'])->group(funct
     Route::get('/cotizar/{id}', [ReposicionController::class, 'verCotizacion'])->name('cotizar.ver');
     Route::post('/cotizar/{id}', [ReposicionController::class, 'guardarCotizacion'])->name('cotizar.guardar');
 
-    Route::get('/configuracion', [\App\Http\Controllers\ConfiguracionController::class, 'index'])->name('configuracion.index');
-    Route::post('/configuracion', [\App\Http\Controllers\ConfiguracionController::class, 'update'])->name('configuracion.update');
+    // 🔥 TARJETA 3: Configuración Global
+    Route::get('/configuracion', [ConfiguracionController::class, 'index'])->name('configuracion.index');
+    Route::post('/configuracion', [ConfiguracionController::class, 'update'])->name('configuracion.update');
 });
 
 // ==================================================================
-// 🚀 ZONA DE ADMINISTRACIÓN GLOBAL (Solo para VOS / Dueños de VendAR)
+// 🚀 ZONA DE ADMINISTRACIÓN GLOBAL
 // ==================================================================
 Route::middleware(['auth', 'role:Administrador Global'])->prefix('admin-global')->group(function () {
-    
-    // Gestión de Comercios (Kioscos/Mercados clientes)
     Route::get('/comercios', [GlobalAdminController::class, 'index'])->name('admin.comercios.index');
     Route::post('/comercios', [GlobalAdminController::class, 'store'])->name('admin.comercios.store');
     Route::put('/comercios/{comercio}', [GlobalAdminController::class, 'update'])->name('admin.comercios.update');
-    
-    // Aquí podrías agregar más adelante:
-    // Route::get('/metricas-globales', [GlobalAdminController::class, 'stats'])->name('admin.stats');
-    // Route::get('/soporte-tickets', [GlobalAdminController::class, 'tickets'])->name('admin.tickets');
 });
 
 require __DIR__.'/auth.php';

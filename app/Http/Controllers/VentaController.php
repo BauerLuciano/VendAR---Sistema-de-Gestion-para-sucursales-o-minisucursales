@@ -57,133 +57,154 @@ class VentaController extends Controller
         ]);
     }
     public function store(Request $request)
-    {
-        $request->validate([
-            'turno_caja_id' => 'required|exists:turno_cajas,id',
-            'consumidor_id' => 'nullable|exists:consumidores,id', 
-            'items'         => 'required|array|min:1',
-            'total'         => 'required|numeric|min:0',
-            'metodo_pago'   => 'required|string',
-        ]);
+{
+    $request->validate([
+        'turno_caja_id' => 'required|exists:turno_cajas,id',
+        'consumidor_id' => 'nullable|exists:consumidores,id', 
+        'items'         => 'required|array|min:1',
+        'total'         => 'required|numeric|min:0',
+        'metodo_pago'   => 'required|string',
+    ]);
 
-        // 🛑 VALIDACIÓN DE CUENTA CORRIENTE (FIADO)
-        if ($request->metodo_pago === 'Cuenta Corriente') {
-            if (!$request->consumidor_id) {
-                return redirect()->back()->withErrors(['error' => 'Debe seleccionar un cliente para realizar una venta en cuenta corriente.']);
-            }
+    // 1. Obtener configuración de stock negativo (Tarjeta 3)
+    $permitirStockNegativo = \App\Models\Configuracion::where('clave', 'permitir_stock_negativo')->value('valor');
+    $permitirStockNegativo = filter_var($permitirStockNegativo, FILTER_VALIDATE_BOOLEAN);
 
-            $consumidor = Consumidor::with('cuentaCorriente')->findOrFail($request->consumidor_id);
-            $deudaActual = $consumidor->cuentaCorriente ? $consumidor->cuentaCorriente->saldo_deudor : 0;
-            $disponible = $consumidor->limite_cuenta_corriente - $deudaActual;
-
-            if ($request->total > $disponible) {
-                $montoFormateado = number_format($disponible, 2, ',', '.');
-                return redirect()->back()->withErrors([
-                    'error' => "Crédito insuficiente. El límite disponible del cliente es de $$montoFormateado."
-                ]);
-            }
+    // 🛑 VALIDACIÓN DE CUENTA CORRIENTE (FIADO)
+    if ($request->metodo_pago === 'Cuenta Corriente') {
+        if (!$request->consumidor_id) {
+            return redirect()->back()->withErrors(['error' => 'Debe seleccionar un cliente para realizar una venta en cuenta corriente.']);
         }
 
-        try {
-            DB::beginTransaction();
+        $consumidor = Consumidor::with('cuentaCorriente')->findOrFail($request->consumidor_id);
+        $deudaActual = $consumidor->cuentaCorriente ? $consumidor->cuentaCorriente->saldo_deudor : 0;
+        $disponible = $consumidor->limite_cuenta_corriente - $deudaActual;
 
-            $turno = TurnoCaja::with('caja')->findOrFail($request->turno_caja_id);
-            $sucursalId = $turno->caja->sucursal_id;
-
-            // 🛑 VALIDACIÓN DE STOCK ANTES DE CREAR LA VENTA
-            foreach ($request->items as $item) {
-                $stockActual = DB::table('producto_sucursal')
-                    ->where('producto_id', $item['id'])
-                    ->where('sucursal_id', $sucursalId)
-                    ->lockForUpdate() 
-                    ->first();
-
-                if (!$stockActual || $stockActual->cantidad_fisica < $item['cantidad']) {
-                    $nombre = $item['nombre'] ?? "Producto ID: {$item['id']}";
-                    $disp = $stockActual ? $stockActual->cantidad_fisica : 0;
-                    throw new \Exception("Stock insuficiente para: {$nombre}. Disponible: {$disp}");
-                }
-            }
-
-            // 1. Crear la Venta
-            $venta = Venta::create([
-                'turno_caja_id' => $request->turno_caja_id,
-                'consumidor_id' => $request->consumidor_id,
-                'metodo_pago'   => $request->metodo_pago,
-                'total'         => $request->total,
-                'estado'        => 'Completada',
+        if ($request->total > $disponible) {
+            $montoFormateado = number_format($disponible, 2, ',', '.');
+            return redirect()->back()->withErrors([
+                'error' => "Crédito insuficiente. El límite disponible del cliente es de $$montoFormateado."
             ]);
-
-            // 2. Lógica Financiera (CC o Movimiento de Caja)
-            if ($request->metodo_pago === 'Cuenta Corriente') {
-                $cuenta = CuentaCorriente::firstOrCreate(
-                    ['consumidor_id' => $request->consumidor_id],
-                    ['saldo_deudor' => 0]
-                );
-                
-                $cuenta->increment('saldo_deudor', $request->total);
-                
-                MovimientoCuentaCorriente::create([
-                    'cuenta_corriente_id' => $cuenta->id,
-                    'venta_id'            => $venta->id,
-                    'monto'               => $request->total,
-                    'tipo'                => 'cargo',
-                    'descripcion'         => 'Compra en POS',
-                ]);
-            } 
-            else {
-                $metodoPagoCaja = strtoupper(str_replace(' ', '_', $request->metodo_pago));
-
-                MovimientoCaja::create([
-                    'turno_caja_id' => $request->turno_caja_id,
-                    'tipo'          => 'INGRESO',
-                    'concepto'      => 'VENTA_MOSTRADOR',
-                    'metodo_pago'   => $metodoPagoCaja,
-                    'monto'         => $request->total,
-                    'descripcion'   => 'Ticket de venta #' . $venta->id,
-                ]);
-            }
-
-            // 3. Procesar Detalle, Descuento de Stock y Auditoría
-            foreach ($request->items as $item) {
-                DetalleVenta::create([
-                    'venta_id'        => $venta->id,
-                    'producto_id'     => $item['id'],
-                    'cantidad'        => $item['cantidad'],
-                    'precio_unitario' => $item['precio_venta'],
-                    'subtotal'        => $item['cantidad'] * $item['precio_venta'],
-                ]);
-
-                // Descuento físico de stock
-                DB::table('producto_sucursal')
-                    ->where('producto_id', $item['id'])
-                    ->where('sucursal_id', $sucursalId) 
-                    ->decrement('cantidad_fisica', $item['cantidad']);
-                
-                // Registro en historial de movimientos (Auditoría)
-                DB::table('movimientos_stock')->insert([
-                    'producto_id' => $item['id'],
-                    'sucursal_id' => $sucursalId,
-                    'user_id' => auth()->id(),
-                    'tipo_movimiento' => 'Venta',
-                    'cantidad_anterior' => $stockActual->cantidad_fisica,
-                    'cantidad_movimiento' => -$item['cantidad'],
-                    'cantidad_actual' => $stockActual->cantidad_fisica - $item['cantidad'],
-                    'motivo' => "Venta POS #{$venta->id}",
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
-
-            DB::commit();
-            return redirect()->back()->with('success', 'Venta exitosa');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            \Log::error($e->getMessage());
-            return redirect()->back()->withErrors(['error' => $e->getMessage()]);
         }
     }
+
+    try {
+        DB::beginTransaction();
+
+        $turno = TurnoCaja::with('caja')->findOrFail($request->turno_caja_id);
+        $sucursalId = $turno->caja->sucursal_id;
+
+        // 🛑 VALIDACIÓN DE STOCK ANTES DE CREAR LA VENTA
+        foreach ($request->items as $item) {
+            $stockActual = DB::table('producto_sucursal')
+                ->where('producto_id', $item['id'])
+                ->where('sucursal_id', $sucursalId)
+                ->lockForUpdate() 
+                ->first();
+
+            $cantDisponible = $stockActual ? $stockActual->cantidad_fisica : 0;
+
+            // Si NO se permite stock negativo, validamos estrictamente
+            if (!$permitirStockNegativo) {
+                if (!$stockActual || $cantDisponible < $item['cantidad']) {
+                    $nombre = $item['nombre'] ?? "Producto ID: {$item['id']}";
+                    throw new \Exception("Stock insuficiente para: {$nombre}. Disponible: {$cantDisponible}");
+                }
+            }
+        }
+
+        // 2. Crear la Venta
+        $venta = Venta::create([
+            'turno_caja_id' => $request->turno_caja_id,
+            'consumidor_id' => $request->consumidor_id,
+            'metodo_pago'   => $request->metodo_pago,
+            'total'         => $request->total,
+            'estado'        => 'Completada',
+        ]);
+
+        // 3. Lógica Financiera (CC o Movimiento de Caja)
+        if ($request->metodo_pago === 'Cuenta Corriente') {
+            $cuenta = CuentaCorriente::firstOrCreate(
+                ['consumidor_id' => $request->consumidor_id],
+                ['saldo_deudor' => 0]
+            );
+            
+            $cuenta->increment('saldo_deudor', $request->total);
+            
+            MovimientoCuentaCorriente::create([
+                'cuenta_corriente_id' => $cuenta->id,
+                'venta_id'            => $venta->id,
+                'monto'               => $request->total,
+                'tipo'                => 'cargo',
+                'descripcion'         => 'Compra en POS',
+            ]);
+        } 
+        else {
+            $metodoPagoCaja = strtoupper(str_replace(' ', '_', $request->metodo_pago));
+
+            MovimientoCaja::create([
+                'turno_caja_id' => $request->turno_caja_id,
+                'tipo'          => 'INGRESO',
+                'concepto'      => 'VENTA_MOSTRADOR',
+                'metodo_pago'   => $metodoPagoCaja,
+                'monto'         => $request->total,
+                'descripcion'   => 'Ticket de venta #' . $venta->id,
+            ]);
+        }
+
+        // 4. Procesar Detalle, Descuento de Stock y Auditoría
+        foreach ($request->items as $item) {
+            DetalleVenta::create([
+                'venta_id'        => $venta->id,
+                'producto_id'     => $item['id'],
+                'cantidad'        => $item['cantidad'],
+                'precio_unitario' => $item['precio_venta'],
+                'subtotal'        => $item['cantidad'] * $item['precio_venta'],
+            ]);
+
+            // Obtenemos el registro actual para saber la cantidad anterior
+            $registroStock = DB::table('producto_sucursal')
+                ->where('producto_id', $item['id'])
+                ->where('sucursal_id', $sucursalId)
+                ->first();
+
+            $cantidadAnterior = $registroStock ? $registroStock->cantidad_fisica : 0;
+            $nuevaCantidad = $cantidadAnterior - $item['cantidad'];
+
+            // Descuento físico de stock (usamos updateOrInsert por si el registro no existe)
+            DB::table('producto_sucursal')->updateOrInsert(
+                ['producto_id' => $item['id'], 'sucursal_id' => $sucursalId],
+                ['cantidad_fisica' => $nuevaCantidad]
+            );
+            
+            // Registro en historial de movimientos (Auditoría mejorada)
+            DB::table('movimientos_stock')->insert([
+                'producto_id'         => $item['id'],
+                'sucursal_id'         => $sucursalId,
+                'user_id'             => auth()->id(),
+                'tipo_movimiento'     => 'Venta',
+                'cantidad_anterior'   => $cantidadAnterior,
+                'cantidad_movimiento' => -$item['cantidad'],
+                'cantidad_actual'     => $nuevaCantidad,
+                'motivo'              => "Venta POS #{$venta->id}" . ($nuevaCantidad < 0 ? " (STOCK NEGATIVO)" : ""),
+                'created_at'          => now(),
+                'updated_at'          => now(),
+            ]);
+        }
+
+        DB::commit();
+        
+        return redirect()->back()->with([
+            'success' => 'Venta exitosa',
+            'venta_id' => $venta->id
+        ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        \Log::error($e->getMessage());
+        return redirect()->back()->withErrors(['error' => $e->getMessage()]);
+    }
+}
 
     public function cancelar(Request $request, Venta $venta)
     {

@@ -3,21 +3,18 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { ref, onMounted, computed } from 'vue';
 
 const page = usePage();
-// Obtenemos los roles que mandamos desde HandleInertiaRequests
 const rolesUsuario = computed(() => page.props.auth.user.roles || []);
 
-// El "Patovica" del Frontend
 const tieneAcceso = (rolesPermitidos) => {
     if (rolesUsuario.value.includes('Administrador Global') || rolesUsuario.value.includes('SuperAdmin')) return true;
     if (!rolesPermitidos || rolesPermitidos.length === 0) return true;
     return rolesPermitidos.some(rol => rolesUsuario.value.includes(rol));
 };
 
-// Integramos tus nuevos enlaces directamente en la estructura del menú Acordeón
 const menu = [
     {
         titulo: 'Principal',
-        roles: [], // Todos ven
+        roles: [], 
         enlaces: [
             { nombre: 'Dashboard', ruta: 'dashboard', icono: 'dashboard', roles: [] },
         ]
@@ -33,8 +30,10 @@ const menu = [
     },
     {
         titulo: 'Inventario',
-        roles: ['Encargado', 'SuperAdmin'], // El Cajero NO ve esta sección
+        roles: ['Encargado', 'SuperAdmin'], 
         enlaces: [
+            // 🔥 AGREGADO: Transferencias
+            { nombre: 'Transferencias', ruta: 'transferencias.index', icono: 'transferencias', roles: ['Encargado', 'SuperAdmin'] },
             { nombre: 'Reposición', ruta: 'reposicion.index', icono: 'reposicion', roles: ['Encargado', 'SuperAdmin'] },
             { nombre: 'Órdenes de Compra', ruta: 'ordenes-compra.index', icono: 'ordenes', roles: ['Encargado', 'SuperAdmin'] },
             { nombre: 'Ingresos de Stock', ruta: 'ingresos.index', icono: 'ingresos', roles: ['Encargado', 'SuperAdmin'] },
@@ -53,13 +52,21 @@ const menu = [
     },
     {
         titulo: 'Administración',
-        roles: ['SuperAdmin'], // Solo dueños
+        roles: ['SuperAdmin'], 
         enlaces: [
             { nombre: 'Cajas Físicas', ruta: 'cajas.index', icono: 'cajas_fisicas', roles: ['SuperAdmin'] },
             { nombre: 'Sucursales', ruta: 'sucursales.index', icono: 'sucursales', roles: ['SuperAdmin'] },
             { nombre: 'Equipo (Usuarios)', ruta: 'usuarios.index', icono: 'usuarios', roles: ['SuperAdmin'] },
             { nombre: 'Roles y Permisos', ruta: 'roles.index', icono: 'seguridad', roles: ['SuperAdmin'] },
             { nombre: 'Configuración Global', ruta: 'configuracion.index', icono: 'configuracion', roles: ['SuperAdmin'] },
+        ]
+    },
+    // 🔥 NUEVA SECCIÓN: Solo para vos (Admin Global)
+    {
+        titulo: 'SaaS VendAR',
+        roles: ['Administrador Global'],
+        enlaces: [
+            { nombre: 'Control de Comercios', ruta: 'admin.comercios.index', icono: 'admin_global', roles: ['Administrador Global'] },
         ]
     }
 ];
@@ -112,6 +119,8 @@ const toggleSeccion = (titulo) => {
                                 class="flex items-center gap-3 px-4 py-2.5 rounded-xl font-bold transition-all duration-200 text-sm"
                             >
                                 <span class="w-5 h-5 flex items-center justify-center">
+                                    <svg v-if="item.icono === 'transferencias'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
+                                    <svg v-if="item.icono === 'admin_global'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418" /></svg>
                                     <svg v-if="item.icono === 'reposicion'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
                                     <svg v-if="item.icono === 'dashboard'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" /></svg>
                                     <svg v-if="item.icono === 'caja_diaria'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
