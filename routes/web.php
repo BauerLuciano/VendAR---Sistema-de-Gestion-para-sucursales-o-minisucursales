@@ -19,6 +19,7 @@ use App\Http\Controllers\{
     UsuarioController,
     OrdenCompraController,
     ReposicionController,
+    GlobalAdminController,
 };
 use App\Models\CuentaCorriente;
 use App\Http\Controllers\Auth\GoogleLoginController;
@@ -69,14 +70,13 @@ Route::get('/caja-diaria', function () {
 // ENDPOINTS PARA EL COMPONENTE VUE (AXIOS) - PREFIJO API
 // ------------------------------------------------------------------
 Route::prefix('api/sesiones-caja')->group(function () {
-    Route::get('/', [CajaDiariaController::class, 'index']); // Historial completo
+    Route::get('/', [CajaDiariaController::class, 'index']); 
     Route::get('/actual', [CajaDiariaController::class, 'getSesionActual']);
     Route::post('/abrir', [CajaDiariaController::class, 'abrirCaja']);
     Route::post('/movimiento-manual', [CajaDiariaController::class, 'crearMovimientoManual']);
     Route::get('/cajas-disponibles', [CajaDiariaController::class, 'getCajasDisponibles']);
     Route::get('/pendientes', [CajaDiariaController::class, 'getPendientes']);
     
-    // Rutas con ID
     Route::get('/{id}/balance', [CajaDiariaController::class, 'getBalance']);
     Route::get('/{id}/movimientos', [CajaDiariaController::class, 'getMovimientos']);
     Route::post('/{id}/cerrar', [CajaDiariaController::class, 'cerrarCaja']);
@@ -84,19 +84,14 @@ Route::prefix('api/sesiones-caja')->group(function () {
 });
 
 // ------------------------------------------------------------------
-// RESTO DEL SISTEMA (Ventas, Productos, Stock, etc.)
+// ZONA DE COMERCIO (Operativa diaria)
 // ------------------------------------------------------------------
-
-// --- ZONA COMERCIAL (Admins, Cajeros y Encargados) ---
 Route::middleware(['auth', 'role:SuperAdmin|Administrador Global|Cajero|Encargado'])->group(function () {
     
-    // POS y Ventas
     Route::get('/pos', [PosController::class, 'index'])->name('pos.index');
-    Route::post('/pos/abrir-turno', [PosController::class, 'abrirTurno'])->name('pos.abrir_turno');
     Route::get('/ventas', [VentaController::class, 'index'])->name('ventas.index'); 
     Route::post('/ventas', [VentaController::class, 'store'])->name('ventas.store');
     
-    // Clientes
     Route::get('/clientes', [ConsumidorController::class, 'index'])->name('consumidores.index');
     Route::post('/clientes', [ConsumidorController::class, 'store'])->name('consumidores.store');
     Route::put('/clientes/{consumidor}', [ConsumidorController::class, 'update'])->name('consumidores.update');
@@ -104,16 +99,12 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global|Cajero|Encargad
     Route::patch('/consumidores/{consumidor}/status', [ConsumidorController::class, 'status'])->name('consumidores.status');
     Route::get('/consumidores/{consumidor}/cuenta', [ConsumidorController::class, 'estadoCuenta'])->name('consumidores.cuenta');
 
-    // PLU CODIGO DE BARRAS
     Route::get('/productos/generar-plu', [\App\Http\Controllers\ProductoController::class, 'generarPlu'])->name('productos.generar-plu');
-
-    // Productos (Rutas unificadas para evitar conflictos)
     Route::get('/productos', [ProductoController::class, 'index'])->name('productos.index');
     Route::post('/productos', [ProductoController::class, 'store'])->name('productos.store');
     Route::post('/productos/{producto}', [ProductoController::class, 'update'])->name('productos.update');
     Route::patch('/productos/{producto}/status', [ProductoController::class, 'status'])->name('productos.status');
     
-    // Catálogo General
     Route::get('/categorias', [CategoriaController::class, 'index'])->name('categorias.index');
     Route::post('/categorias', [CategoriaController::class, 'store'])->name('categorias.store');
     Route::put('/categorias/{categoria}', [CategoriaController::class, 'update'])->name('categorias.update');
@@ -132,21 +123,16 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global|Cajero|Encargad
     Route::post('/ingresos', [IngresoMercaderiaController::class, 'store'])->name('ingresos.store');
 });
 
-// --- ZONA DE GESTIÓN (Solo Admins y Encargados) ---
+// --- ZONA DE GESTIÓN (Admins del Comercio) ---
 Route::middleware(['auth', 'role:SuperAdmin|Administrador Global|Encargado'])->group(function () {
-    
-    // Gestión de Stock específica
     Route::post('/productos/{producto}/ajuste-stock', [ProductoController::class, 'ajustarStock'])->name('productos.ajustar');
     Route::get('/productos/{producto}/auditoria', [ProductoController::class, 'auditoria'])->name('productos.auditoria');
-
-    // Recursos
-    Route::resource('proveedores', ProveedorController::class)->except(['index', 'store', 'update']); // index/store/update ya definidos
+    Route::resource('proveedores', ProveedorController::class)->except(['index', 'store', 'update']);
 });
 
-// --- ZONA DE PODER ABSOLUTO (Solo Dueños y Devs) ---
+// --- ZONA DE PODER ABSOLUTO (Configuración del Comercio / Dueño del local) ---
 Route::middleware(['auth', 'role:SuperAdmin|Administrador Global'])->group(function () {
     
-    // Sucursales
     Route::get('/sucursales', [SucursalController::class, 'index'])->name('sucursales.index');
     Route::post('/sucursales', [SucursalController::class, 'store'])->name('sucursales.store');
     Route::put('/sucursales/{sucursal}', [SucursalController::class, 'update'])->name('sucursales.update');
@@ -157,32 +143,41 @@ Route::middleware(['auth', 'role:SuperAdmin|Administrador Global'])->group(funct
     Route::put('/proveedores/{proveedore}', [ProveedorController::class, 'update'])->name('proveedores.update');
     Route::patch('/proveedores/{proveedore}/status', [ProveedorController::class, 'status'])->name('proveedores.status');
 
-    // Seguridad y Usuarios
     Route::resource('roles', RoleController::class);
-    
-    // 🔥 RUTAS MANUALES PARA PERMISOS (Agregadas)
     Route::post('/permisos', [RoleController::class, 'storePermiso'])->name('permisos.store');
     Route::put('/permisos/{permiso}', [RoleController::class, 'updatePermiso'])->name('permisos.update');
 
     Route::resource('usuarios', UsuarioController::class);
 
-    // Órdenes de Compra
     Route::resource('ordenes-compra', OrdenCompraController::class)->except(['create', 'show', 'edit', 'update']);
     Route::post('/ordenes-compra/sugerencias', [OrdenCompraController::class, 'generarSugerencias'])->name('ordenes-compra.sugerencias');
     Route::patch('/ordenes-compra/{ordenCompra}/estado', [OrdenCompraController::class, 'cambiarEstado'])->name('ordenes-compra.estado');
     Route::post('/ordenes-compra/{ordenCompra}/aprobar', [OrdenCompraController::class, 'aprobarYRecibir'])->name('ordenes-compra.aprobar');
     Route::post('/ordenes-compra/{ordenCompra}/confirmar', [OrdenCompraController::class, 'confirmarPedido'])->name('ordenes-compra.confirmar');
     
-    // Reposición
     Route::get('/reposicion', [ReposicionController::class, 'index'])->name('reposicion.index');
     Route::post('/reposicion/generar', [ReposicionController::class, 'generarPreOrdenes'])->name('reposicion.generar');
 
     Route::get('/cotizar/{id}', [ReposicionController::class, 'verCotizacion'])->name('cotizar.ver');
     Route::post('/cotizar/{id}', [ReposicionController::class, 'guardarCotizacion'])->name('cotizar.guardar');
 
-    // Configuraciones Generales
     Route::get('/configuracion', [\App\Http\Controllers\ConfiguracionController::class, 'index'])->name('configuracion.index');
     Route::post('/configuracion', [\App\Http\Controllers\ConfiguracionController::class, 'update'])->name('configuracion.update');
+});
+
+// ==================================================================
+// 🚀 ZONA DE ADMINISTRACIÓN GLOBAL (Solo para VOS / Dueños de VendAR)
+// ==================================================================
+Route::middleware(['auth', 'role:Administrador Global'])->prefix('admin-global')->group(function () {
+    
+    // Gestión de Comercios (Kioscos/Mercados clientes)
+    Route::get('/comercios', [GlobalAdminController::class, 'index'])->name('admin.comercios.index');
+    Route::post('/comercios', [GlobalAdminController::class, 'store'])->name('admin.comercios.store');
+    Route::put('/comercios/{comercio}', [GlobalAdminController::class, 'update'])->name('admin.comercios.update');
+    
+    // Aquí podrías agregar más adelante:
+    // Route::get('/metricas-globales', [GlobalAdminController::class, 'stats'])->name('admin.stats');
+    // Route::get('/soporte-tickets', [GlobalAdminController::class, 'tickets'])->name('admin.tickets');
 });
 
 require __DIR__.'/auth.php';
